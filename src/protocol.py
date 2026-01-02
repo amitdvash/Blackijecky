@@ -142,3 +142,18 @@ def unpack_payload_server(data: bytes) -> Optional[Tuple[int, int, int]]:
         return result, rank, suit
     except struct.error:
         return None
+
+
+def recv_exact(sock, size: int) -> bytes:
+    """
+    Helper to receive exactly 'size' bytes from a socket.
+    Raises Exception if connection is closed before receiving all bytes.
+    """
+    buf = b''
+    while len(buf) < size:
+        data = sock.recv(size - len(buf))
+        if not data:
+            raise Exception("Connection closed")
+        buf += data
+    return buf
+

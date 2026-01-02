@@ -23,8 +23,10 @@ from src.protocol import (
     pack_request, 
     unpack_payload_server, 
     pack_payload_client,
-    SIZE_PAYLOAD_SERVER
+    SIZE_PAYLOAD_SERVER,
+    recv_exact
 )
+from src.game_logic import Hand, Card
 
 TEAM_NAME = "BlackijeckyClient"
 
@@ -125,11 +127,12 @@ class Client:
         """Handles a single round of the game."""
         cards_received = 0
         my_turn = True # Initially true, waiting for initial deal
+        player_hand = Hand()
         
         while True:
             # Read exactly one packet size
             try:
-                data = self.recv_exact(tcp_socket, SIZE_PAYLOAD_SERVER)
+                data = recv_exact(tcp_socket, SIZE_PAYLOAD_SERVER)
             except Exception:
                 raise Exception("Server disconnected")
                 
@@ -142,15 +145,19 @@ class Client:
             
             # Display Card
             if rank != 0:
-                card_str = f"{RANK_MAP.get(rank, rank)} of {SUIT_MAP.get(suit, suit)}"
+                card = Card(rank, suit)
+                card_str = str(card)
+                
                 if cards_received < 2:
                     print(f"Player Card: {card_str}")
+                    player_hand.add_card(card)
                 elif cards_received == 2:
                     print(f"Dealer Card: {card_str}")
                 else:
                     # After initial deal
                     if my_turn:
                         print(f"Player Dealt: {card_str}")
+                        player_hand.add_card(card)
                     else:
                         print(f"Dealer Dealt: {card_str}")
                 
@@ -160,33 +167,22 @@ class Client:
             if result != 0:
                 return result
             
-            # Game Logic (Prompt User)
-            # We prompt if:
+            # Game Logic (Automated Heuristic)
+            # We decide if:
             # 1. We just got the 3rd card (Initial deal complete: P1, P2, D1)
             # 2. We just got a card and it's still our turn (Hit response)
             
             if cards_received >= 3 and my_turn:
-                while True:
-                    choice = input("Action (Hit/Stand): ").strip().lower()
-                    if choice in ['hit', 'h']:
-                        tcp_socket.sendall(pack_payload_client(PAYLOAD_DECISION_HIT))
-                        break # Wait for next card
-                    elif choice in ['stand', 's']:
-                        tcp_socket.sendall(pack_payload_client(PAYLOAD_DECISION_STAND))
-                        my_turn = False
-                        break # Wait for dealer cards / result
-                    else:
-                        print("Invalid input. Please enter 'Hit' or 'Stand'.")
-
-    def recv_exact(self, sock, size):
-        """Helper to receive exactly 'size' bytes."""
-        buf = b''
-        while len(buf) < size:
-            data = sock.recv(size - len(buf))
-            if not data:
-                raise Exception("Connection closed")
-            buf += data
-        return buf
+                current_value = player_hand.calculate_value()
+                print(f"Current Hand Value: {current_value}")
+                
+                if current_value < 17:
+                    print("Client decides to HIT")
+                    tcp_socket.sendall(pack_payload_client(PAYLOAD_DECISION_HIT))
+                else:
+                    print("Client decides to STAND")
+                    tcp_socket.sendall(pack_payload_client(PAYLOAD_DECISION_STAND))
+                    my_turn = False
 
 if __name__ == "__main__":
     client = Client()

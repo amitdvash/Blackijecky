@@ -26,7 +26,8 @@ from src.protocol import (
     pack_payload_server, 
     unpack_payload_client,
     SIZE_REQUEST,
-    SIZE_PAYLOAD_CLIENT
+    SIZE_PAYLOAD_CLIENT,
+    recv_exact
 )
 from src.game_logic import Deck, Hand, Card
 
@@ -92,7 +93,7 @@ class Server:
             
             # 1. Receive Request
             try:
-                data = self.recv_exact(client_socket, SIZE_REQUEST)
+                data = recv_exact(client_socket, SIZE_REQUEST)
             except Exception:
                 print(f"Client {addr} disconnected before request.")
                 return
@@ -154,7 +155,7 @@ class Server:
         while True:
             # Wait for decision
             try:
-                data = self.recv_exact(client_socket, SIZE_PAYLOAD_CLIENT)
+                data = recv_exact(client_socket, SIZE_PAYLOAD_CLIENT)
             except Exception:
                 raise Exception("Client disconnected during game")
                 
@@ -220,16 +221,6 @@ class Server:
         """Helper to send a result payload without a card."""
         packet = pack_payload_server(result, 0, 0) # Rank 0, Suit 0
         sock.sendall(packet)
-
-    def recv_exact(self, sock, size):
-        """Helper to receive exactly 'size' bytes."""
-        buf = b''
-        while len(buf) < size:
-            data = sock.recv(size - len(buf))
-            if not data:
-                raise Exception("Connection closed")
-            buf += data
-        return buf
 
 if __name__ == "__main__":
     server = Server()
