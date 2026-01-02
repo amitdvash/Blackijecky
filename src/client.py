@@ -86,6 +86,7 @@ class Client:
         """Connects to server and handles the game session."""
         tcp_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:
+            tcp_socket.settimeout(15) # 15 seconds timeout for network operations
             tcp_socket.connect((server_ip, server_port))
             
             # 4. Send Request
@@ -97,21 +98,28 @@ class Client:
             
             for i in range(1, num_rounds + 1):
                 print(f"\n--- Round {i} ---")
-                result = self.play_round(tcp_socket)
-                if result == RESULT_WIN:
-                    wins += 1
-                    print("You Won!")
-                elif result == RESULT_LOSS:
-                    print("You Lost!")
-                elif result == RESULT_TIE:
-                    print("It's a Tie!")
+                try:
+                    result = self.play_round(tcp_socket)
+                    if result == RESULT_WIN:
+                        wins += 1
+                        print("You Won!")
+                    elif result == RESULT_LOSS:
+                        print("You Lost!")
+                    elif result == RESULT_TIE:
+                        print("It's a Tie!")
+                except Exception as e:
+                    print(f"Error during round {i}: {e}")
+                    break
             
             print(f"\nFinished playing {num_rounds} rounds, win rate: {wins/num_rounds:.2f}")
             
+        except socket.timeout:
+            print("Connection timed out.")
         except Exception as e:
             print(f"Failed to connect to server: {e}")
         finally:
             tcp_socket.close()
+            print("Disconnected from server.")
 
     def play_round(self, tcp_socket):
         """Handles a single round of the game."""

@@ -88,6 +88,8 @@ class Server:
     def handle_client(self, client_socket: socket.socket, addr):
         """Handles a single client connection."""
         try:
+            client_socket.settimeout(15) # 15 seconds timeout per client
+            
             # 1. Receive Request
             try:
                 data = self.recv_exact(client_socket, SIZE_REQUEST)
@@ -106,10 +108,16 @@ class Server:
             # 2. Game Loop
             for round_num in range(1, num_rounds + 1):
                 print(f"Starting Round {round_num} for {team_name}")
-                self.play_round(client_socket)
+                try:
+                    self.play_round(client_socket)
+                except Exception as e:
+                    print(f"Error during round {round_num} with {team_name}: {e}")
+                    break
             
             print(f"Finished all rounds for {team_name}. Closing connection.")
 
+        except socket.timeout:
+            print(f"Client {addr} timed out.")
         except Exception as e:
             print(f"Error handling client {addr}: {e}")
         finally:
