@@ -18,7 +18,8 @@ from src.consts import (
     RESULT_LOSS,
     RESULT_TIE,
     PAYLOAD_DECISION_HIT,
-    PAYLOAD_DECISION_STAND
+    PAYLOAD_DECISION_STAND,
+    Colors
 )
 from src.protocol import (
     pack_offer, 
@@ -31,7 +32,7 @@ from src.protocol import (
 )
 from src.game_logic import Deck, Hand, Card
 
-SERVER_NAME = "BlackijeckyServer"
+SERVER_NAME = "404_Win_Not_Found_Server"
 
 class Server:
     def __init__(self):
@@ -50,7 +51,7 @@ class Server:
 
     def start(self):
         """Starts the server: UDP broadcast and TCP listener."""
-        print(f"Server started, listening on IP address {self.local_ip}")
+        print(f"{Colors.OKGREEN}Server started, listening on IP address {self.local_ip}{Colors.ENDC}")
         
         # Start UDP Broadcast Thread
         broadcast_thread = threading.Thread(target=self.broadcast_offers, daemon=True)
@@ -75,16 +76,16 @@ class Server:
     def listen_tcp(self):
         """Listens for incoming TCP connections."""
         self.tcp_socket.listen()
-        print(f"Listening for TCP connections on port {self.tcp_port}...")
+        print(f"{Colors.OKBLUE}Listening for TCP connections on port {self.tcp_port}...{Colors.ENDC}")
         
         while self.running:
             try:
                 client_socket, addr = self.tcp_socket.accept()
-                print(f"New connection from {addr}")
+                print(f"{Colors.OKCYAN}New connection from {addr}{Colors.ENDC}")
                 client_thread = threading.Thread(target=self.handle_client, args=(client_socket, addr))
                 client_thread.start()
             except Exception as e:
-                print(f"Error accepting connection: {e}")
+                print(f"{Colors.FAIL}Error accepting connection: {e}{Colors.ENDC}")
 
     def handle_client(self, client_socket: socket.socket, addr):
         """Handles a single client connection."""
@@ -104,18 +105,19 @@ class Server:
                 return
 
             num_rounds, team_name = request
-            print(f"Client {team_name} requested {num_rounds} rounds.")
+            print(f"{Colors.OKCYAN}Client '{team_name}' connected. Requested {num_rounds} rounds.{Colors.ENDC}")
 
             # 2. Game Loop
             for round_num in range(1, num_rounds + 1):
-                print(f"Starting Round {round_num} for {team_name}")
+                print(f"{Colors.HEADER}--- Starting Round {round_num} for {team_name} ---{Colors.ENDC}")
                 try:
                     self.play_round(client_socket)
+                    print(f"{Colors.HEADER}--- Round {round_num} completed for {team_name} ---{Colors.ENDC}")
                 except Exception as e:
-                    print(f"Error during round {round_num} with {team_name}: {e}")
+                    print(f"{Colors.FAIL}Error during round {round_num} with {team_name}: {e}{Colors.ENDC}")
                     break
             
-            print(f"Finished all rounds for {team_name}. Closing connection.")
+            print(f"{Colors.OKBLUE}Finished all rounds for {team_name}. Closing connection.\n{Colors.ENDC}")
 
         except socket.timeout:
             print(f"Client {addr} timed out.")

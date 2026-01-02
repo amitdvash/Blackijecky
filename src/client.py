@@ -16,7 +16,8 @@ from src.consts import (
     RESULT_LOSS,
     RESULT_TIE,
     PAYLOAD_DECISION_HIT,
-    PAYLOAD_DECISION_STAND
+    PAYLOAD_DECISION_STAND,
+    Colors
 )
 from src.protocol import (
     unpack_offer, 
@@ -28,7 +29,7 @@ from src.protocol import (
 )
 from src.game_logic import Hand, Card
 
-TEAM_NAME = "BlackijeckyClient"
+TEAM_NAME = "404_Win_Not_Found_Client"
 
 class Client:
     def __init__(self):
@@ -45,15 +46,16 @@ class Client:
 
     def start(self):
         """Main client loop."""
+        # 1. Get user input (Once)
         while True:
             try:
-                # 1. Get user input
-                try:
-                    num_rounds = int(input("How many rounds do you want to play? "))
-                except ValueError:
-                    print("Please enter a valid number.")
-                    continue
+                num_rounds = int(input("How many rounds do you want to play? "))
+                break
+            except ValueError:
+                print("Please enter a valid number.")
 
+        while True:
+            try:
                 print("Client started, listening for offer requests...")
                 
                 # 2. Listen for UDP Offer
@@ -99,21 +101,23 @@ class Client:
             wins = 0
             
             for i in range(1, num_rounds + 1):
-                print(f"\n--- Round {i} ---")
+                print(f"\n{Colors.HEADER}{'='*20} Round {i} {'='*20}{Colors.ENDC}")
                 try:
                     result = self.play_round(tcp_socket)
                     if result == RESULT_WIN:
                         wins += 1
-                        print("You Won!")
+                        print(f"\n{Colors.OKGREEN}{'*'*10} You Won! {'*'*10}{Colors.ENDC}")
                     elif result == RESULT_LOSS:
-                        print("You Lost!")
+                        print(f"\n{Colors.FAIL}{'!'*10} You Lost! {'!'*10}{Colors.ENDC}")
                     elif result == RESULT_TIE:
-                        print("It's a Tie!")
+                        print(f"\n{Colors.WARNING}{'-'*10} It's a Tie! {'-'*10}{Colors.ENDC}")
                 except Exception as e:
-                    print(f"Error during round {i}: {e}")
+                    print(f"{Colors.FAIL}Error during round {i}: {e}{Colors.ENDC}")
                     break
             
-            print(f"\nFinished playing {num_rounds} rounds, win rate: {wins/num_rounds:.2f}")
+            print(f"\n{Colors.HEADER}{'='*50}{Colors.ENDC}")
+            print(f"{Colors.BOLD}Finished playing {num_rounds} rounds, win rate: {wins/num_rounds:.2f}{Colors.ENDC}")
+            print(f"{Colors.HEADER}{'='*50}{Colors.ENDC}\n")
             
         except socket.timeout:
             print("Connection timed out.")
@@ -149,17 +153,17 @@ class Client:
                 card_str = str(card)
                 
                 if cards_received < 2:
-                    print(f"Player Card: {card_str}")
+                    print(f"{Colors.OKCYAN}Player Card: {card_str}{Colors.ENDC}")
                     player_hand.add_card(card)
                 elif cards_received == 2:
-                    print(f"Dealer Card: {card_str}")
+                    print(f"{Colors.WARNING}Dealer Card: {card_str}{Colors.ENDC}")
                 else:
                     # After initial deal
                     if my_turn:
-                        print(f"Player Dealt: {card_str}")
+                        print(f"{Colors.OKCYAN}Player Dealt: {card_str}{Colors.ENDC}")
                         player_hand.add_card(card)
                     else:
-                        print(f"Dealer Dealt: {card_str}")
+                        print(f"{Colors.WARNING}Dealer Dealt: {card_str}{Colors.ENDC}")
                 
                 cards_received += 1
 
@@ -174,13 +178,13 @@ class Client:
             
             if cards_received >= 3 and my_turn:
                 current_value = player_hand.calculate_value()
-                print(f"Current Hand Value: {current_value}")
+                print(f"{Colors.OKBLUE}Current Hand Value: {current_value}{Colors.ENDC}")
                 
                 if current_value < 17:
-                    print("Client decides to HIT")
+                    print(f"{Colors.BOLD}-> Client decides to HIT{Colors.ENDC}")
                     tcp_socket.sendall(pack_payload_client(PAYLOAD_DECISION_HIT))
                 else:
-                    print("Client decides to STAND")
+                    print(f"{Colors.BOLD}-> Client decides to STAND{Colors.ENDC}")
                     tcp_socket.sendall(pack_payload_client(PAYLOAD_DECISION_STAND))
                     my_turn = False
 
