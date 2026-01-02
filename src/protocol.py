@@ -15,15 +15,20 @@ from src.consts import (
 # Struct formats (Network Byte Order !)
 # Offer: Magic(4) | Type(1) | Port(2) | Name(32)
 FMT_OFFER = '!IBH32s'
+SIZE_OFFER = struct.calcsize(FMT_OFFER)
 
 # Request: Magic(4) | Type(1) | NumRounds(1) | Name(32)
 FMT_REQUEST = '!IBB32s'
+SIZE_REQUEST = struct.calcsize(FMT_REQUEST)
 
 # Payload Client: Magic(4) | Type(1) | Decision(5)
 FMT_PAYLOAD_CLIENT = '!IB5s'
+SIZE_PAYLOAD_CLIENT = struct.calcsize(FMT_PAYLOAD_CLIENT)
 
 # Payload Server: Magic(4) | Type(1) | Result(1) | Rank(2) | Suit(1)
 FMT_PAYLOAD_SERVER = '!IBBHB'
+SIZE_PAYLOAD_SERVER = struct.calcsize(FMT_PAYLOAD_SERVER)
+
 
 
 def _pad_string(text: str, length: int) -> bytes:

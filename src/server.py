@@ -12,9 +12,23 @@ from src.consts import (
     BROADCAST_IP,
     OFFER_INTERVAL,
     MAGIC_COOKIE,
-    MSG_TYPE_OFFER
+    MSG_TYPE_OFFER,
+    RESULT_CONTINUE,
+    RESULT_WIN,
+    RESULT_LOSS,
+    RESULT_TIE,
+    PAYLOAD_DECISION_HIT,
+    PAYLOAD_DECISION_STAND
 )
-from src.protocol import pack_offer
+from src.protocol import (
+    pack_offer, 
+    unpack_request, 
+    pack_payload_server, 
+    unpack_payload_client,
+    SIZE_REQUEST,
+    SIZE_PAYLOAD_CLIENT
+)
+from src.game_logic import Deck, Hand, Card
 
 SERVER_NAME = "BlackijeckyServer"
 
@@ -47,7 +61,7 @@ class Server:
     def broadcast_offers(self):
         """Sends UDP Offer packets every second."""
         packet = pack_offer(self.tcp_port, SERVER_NAME)
-        print(f"Server started, listening on IP address {self.local_ip}") # Re-print as per example flow
+        # print(f"Server started, listening on IP address {self.local_ip}") # Re-print as per example flow
         
         while self.running:
             try:
@@ -74,12 +88,140 @@ class Server:
     def handle_client(self, client_socket: socket.socket, addr):
         """Handles a single client connection."""
         try:
-            # TODO: Implement handshake and game loop
-            pass
+            # 1. Receive Request
+            try:
+                data = self.recv_exact(client_socket, SIZE_REQUEST)
+            except Exception:
+                print(f"Client {addr} disconnected before request.")
+                return
+
+            request = unpack_request(data)
+            if not request:
+                print(f"Invalid request from {addr}")
+                return
+
+            num_rounds, team_name = request
+            print(f"Client {team_name} requested {num_rounds} rounds.")
+
+            # 2. Game Loop
+            for round_num in range(1, num_rounds + 1):
+                print(f"Starting Round {round_num} for {team_name}")
+                self.play_round(client_socket)
+            
+            print(f"Finished all rounds for {team_name}. Closing connection.")
+
         except Exception as e:
             print(f"Error handling client {addr}: {e}")
         finally:
             client_socket.close()
+
+    def play_round(self, client_socket: socket.socket):
+        """Executes a single round of Blackjack."""
+        deck = Deck()
+        player_hand = Hand()
+        dealer_hand = Hand()
+
+        # --- Initial Deal ---
+        # Player Card 1
+        card = deck.deal_card()
+        player_hand.add_card(card)
+        self.send_card(client_socket, card, RESULT_CONTINUE)
+
+        # Player Card 2
+        card = deck.deal_card()
+        player_hand.add_card(card)
+        self.send_card(client_socket, card, RESULT_CONTINUE)
+
+        # Dealer Card 1 (Visible)
+        card = deck.deal_card()
+        dealer_hand.add_card(card)
+        self.send_card(client_socket, card, RESULT_CONTINUE)
+
+        # Dealer Card 2 (Hidden)
+        hidden_card = deck.deal_card()
+        dealer_hand.add_card(hidden_card)
+        
+        # --- Player Turn ---
+        player_busted = False
+        while True:
+            # Wait for decision
+            try:
+                data = self.recv_exact(client_socket, SIZE_PAYLOAD_CLIENT)
+            except Exception:
+                raise Exception("Client disconnected during game")
+                
+            decision = unpack_payload_client(data)
+            
+            if decision == PAYLOAD_DECISION_HIT:
+                new_card = deck.deal_card()
+                player_hand.add_card(new_card)
+                
+                if player_hand.calculate_value() > 21:
+                    # Player Busts
+                    self.send_card(client_socket, new_card, RESULT_LOSS)
+                    player_busted = True
+                    break
+                else:
+                    # Continue
+                    self.send_card(client_socket, new_card, RESULT_CONTINUE)
+            
+            elif decision == PAYLOAD_DECISION_STAND:
+                break
+            else:
+                print(f"Unknown decision: {decision}")
+                break
+
+        if player_busted:
+            return # Round over, Dealer wins
+
+        # --- Dealer Turn ---
+        # Reveal hidden card
+        self.send_card(client_socket, hidden_card, RESULT_CONTINUE)
+        
+        while dealer_hand.calculate_value() < 17:
+            new_card = deck.deal_card()
+            dealer_hand.add_card(new_card)
+            
+            if dealer_hand.calculate_value() > 21:
+                # Dealer Busts -> Player Wins
+                self.send_card(client_socket, new_card, RESULT_WIN)
+                return # Round over
+            else:
+                self.send_card(client_socket, new_card, RESULT_CONTINUE)
+
+        # --- Determine Winner ---
+        p_val = player_hand.calculate_value()
+        d_val = dealer_hand.calculate_value()
+        
+        if p_val > d_val:
+            result = RESULT_WIN
+        elif d_val > p_val:
+            result = RESULT_LOSS
+        else:
+            result = RESULT_TIE
+            
+        # Send final result (with empty card)
+        self.send_result(client_socket, result)
+
+    def send_card(self, sock, card, result):
+        """Helper to send a card payload."""
+        packet = pack_payload_server(result, card.rank, card.suit)
+        sock.sendall(packet)
+
+    def send_result(self, sock, result):
+        """Helper to send a result payload without a card."""
+        packet = pack_payload_server(result, 0, 0) # Rank 0, Suit 0
+        sock.sendall(packet)
+
+    def recv_exact(self, sock, size):
+        """Helper to receive exactly 'size' bytes."""
+        buf = b''
+        while len(buf) < size:
+            data = sock.recv(size - len(buf))
+            if not data:
+                raise Exception("Connection closed")
+            buf += data
+        return buf
 
 if __name__ == "__main__":
     server = Server()
