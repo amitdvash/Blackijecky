@@ -16,13 +16,19 @@ from src.protocol import pack_request, SIZE_REQUEST
 SERVER_PORT = 0 # Will be set after server starts
 
 def run_server():
+    """Starts the server and updates the global SERVER_PORT."""
     global SERVER_PORT
     server = Server()
     SERVER_PORT = server.tcp_port
     server.start()
 
 def run_bad_server():
-    """Runs a server that sends garbage to the client."""
+    """
+    Runs a server that sends garbage to the client.
+
+    Returns:
+        int: The port the bad server is listening on.
+    """
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.bind(('127.0.0.1', 0))
     port = s.getsockname()[1]
@@ -49,6 +55,10 @@ def run_bad_server():
     return port
 
 def test_client_robustness():
+    """
+    Tests the client's ability to handle a server sending garbage data.
+    Ensures the client does not crash.
+    """
     print("\n>>> TEST 4: Client Robustness against Bad Server <<<")
     
     # Start Bad Server in a thread
@@ -85,6 +95,10 @@ def test_client_robustness():
     bad_server_socket.close()
 
 def test_invalid_request():
+    """
+    Tests sending invalid request data to the server.
+    Ensures the server handles it gracefully (closes connection).
+    """
     print("\n>>> TEST 1: Sending Invalid Request (Garbage Data) <<<")
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -111,6 +125,10 @@ def test_invalid_request():
         print(f"Error in Test 1: {e}")
 
 def test_wrong_magic_cookie():
+    """
+    Tests sending a request with an incorrect magic cookie.
+    Ensures the server rejects it and closes the connection.
+    """
     print("\n>>> TEST 2: Sending Request with Wrong Magic Cookie <<<")
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -138,6 +156,10 @@ def test_wrong_magic_cookie():
         print(f"Error in Test 2: {e}")
 
 def test_invalid_game_packet():
+    """
+    Tests sending garbage data during the game loop (instead of a valid move).
+    Ensures the server handles it gracefully (closes connection).
+    """
     print("\n>>> TEST 3: Sending Garbage during Game Loop <<<")
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
