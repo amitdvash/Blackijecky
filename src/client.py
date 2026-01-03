@@ -105,6 +105,8 @@ class Client:
             print(f"Connected to server. Requested {num_rounds} rounds.")
             
             wins = 0
+            losses = 0
+            ties = 0
             
             for i in range(1, num_rounds + 1):
                 print(f"\n{Colors.HEADER}{'='*20} Round {i} {'='*20}{Colors.ENDC}")
@@ -114,15 +116,22 @@ class Client:
                         wins += 1
                         print(f"\n{Colors.OKGREEN}{'*'*10} You Won! {'*'*10}{Colors.ENDC}")
                     elif result == RESULT_LOSS:
+                        losses += 1
                         print(f"\n{Colors.FAIL}{'!'*10} You Lost! {'!'*10}{Colors.ENDC}")
                     elif result == RESULT_TIE:
+                        ties += 1
                         print(f"\n{Colors.WARNING}{'-'*10} It's a Tie! {'-'*10}{Colors.ENDC}")
                 except Exception as e:
                     print(f"{Colors.FAIL}Error during round {i}: {e}{Colors.ENDC}")
                     break
             
             print(f"\n{Colors.HEADER}{'='*50}{Colors.ENDC}")
-            print(f"{Colors.BOLD}Finished playing {num_rounds} rounds, win rate: {wins/num_rounds:.2f}{Colors.ENDC}")
+            print(f"{Colors.BOLD}Game Statistics:{Colors.ENDC}")
+            print(f"  Wins:   {wins}")
+            print(f"  Losses: {losses}")
+            print(f"  Ties:   {ties}")
+            if num_rounds > 0:
+                print(f"  Win Rate: {wins/num_rounds:.2%}")
             print(f"{Colors.HEADER}{'='*50}{Colors.ENDC}\n")
             
         except socket.timeout:
