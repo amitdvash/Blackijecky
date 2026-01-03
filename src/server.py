@@ -19,7 +19,8 @@ from src.consts import (
     RESULT_TIE,
     PAYLOAD_DECISION_HIT,
     PAYLOAD_DECISION_STAND,
-    Colors
+    Colors,
+    SOCKET_TIMEOUT
 )
 from src.protocol import (
     pack_offer, 
@@ -90,7 +91,7 @@ class Server:
     def handle_client(self, client_socket: socket.socket, addr):
         """Handles a single client connection."""
         try:
-            client_socket.settimeout(15) # 15 seconds timeout per client
+            client_socket.settimeout(SOCKET_TIMEOUT) # Timeout per client
             
             # 1. Receive Request
             try:

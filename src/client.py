@@ -17,7 +17,9 @@ from src.consts import (
     RESULT_TIE,
     PAYLOAD_DECISION_HIT,
     PAYLOAD_DECISION_STAND,
-    Colors
+    Colors,
+    BUFFER_SIZE,
+    SOCKET_TIMEOUT
 )
 from src.protocol import (
     unpack_offer, 
@@ -56,6 +58,9 @@ class Client:
             while True:
                 try:
                     num_rounds = int(input("How many rounds do you want to play? "))
+                    if num_rounds < 1 or num_rounds > 255:
+                        print("Please enter a number between 1 and 255.")
+                        continue
                     break
                 except ValueError:
                     print("Please enter a valid number.")
@@ -81,7 +86,7 @@ class Client:
     def listen_for_offer(self):
         """Waits for a valid UDP offer."""
         while True:
-            data, addr = self.udp_socket.recvfrom(1024)
+            data, addr = self.udp_socket.recvfrom(BUFFER_SIZE)
             result = unpack_offer(data)
             
             if result:
@@ -96,7 +101,7 @@ class Client:
         """Connects to server and handles the game session."""
         tcp_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:
-            tcp_socket.settimeout(15) # 15 seconds timeout for network operations
+            tcp_socket.settimeout(SOCKET_TIMEOUT) # Timeout for network operations
             tcp_socket.connect((server_ip, server_port))
             
             # 4. Send Request
