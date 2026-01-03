@@ -32,7 +32,9 @@ from src.game_logic import Hand, Card
 TEAM_NAME = "404_Win_Not_Found_Client"
 
 class Client:
-    def __init__(self):
+    def __init__(self, player_name=TEAM_NAME, auto_rounds=None):
+        self.player_name = player_name
+        self.auto_rounds = auto_rounds
         self.udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         # Enable address reuse to allow multiple clients on same machine
         try:
@@ -47,16 +49,20 @@ class Client:
     def start(self):
         """Main client loop."""
         # 1. Get user input (Once)
-        while True:
-            try:
-                num_rounds = int(input("How many rounds do you want to play? "))
-                break
-            except ValueError:
-                print("Please enter a valid number.")
+        if self.auto_rounds is not None:
+            num_rounds = self.auto_rounds
+            print(f"{Colors.OKBLUE}[{self.player_name}] Auto-selecting {num_rounds} rounds{Colors.ENDC}")
+        else:
+            while True:
+                try:
+                    num_rounds = int(input("How many rounds do you want to play? "))
+                    break
+                except ValueError:
+                    print("Please enter a valid number.")
 
         while True:
             try:
-                print("Client started, listening for offer requests...")
+                print(f"{Colors.OKGREEN}[{self.player_name}] Client started, listening for offer requests...{Colors.ENDC}")
                 
                 # 2. Listen for UDP Offer
                 server_ip, server_port = self.listen_for_offer()
@@ -94,7 +100,7 @@ class Client:
             tcp_socket.connect((server_ip, server_port))
             
             # 4. Send Request
-            request_packet = pack_request(num_rounds, TEAM_NAME)
+            request_packet = pack_request(num_rounds, self.player_name)
             tcp_socket.sendall(request_packet)
             print(f"Connected to server. Requested {num_rounds} rounds.")
             
