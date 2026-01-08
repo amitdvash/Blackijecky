@@ -7,6 +7,19 @@ from src.protocol import unpack_offer, pack_request, unpack_payload_server, pack
 from src.consts import CLIENT_UDP_PORT, PAYLOAD_DECISION_STAND, PAYLOAD_DECISION_HIT
 
 def recv_exact(sock, size):
+    """
+    Helper to receive exactly 'size' bytes from a socket.
+
+    Args:
+        sock (socket.socket): The socket to receive from.
+        size (int): The number of bytes to receive.
+
+    Returns:
+        bytes: The received data.
+
+    Raises:
+        Exception: If connection is closed before receiving all bytes.
+    """
     buf = b''
     while len(buf) < size:
         data = sock.recv(size - len(buf))
@@ -16,6 +29,10 @@ def recv_exact(sock, size):
     return buf
 
 def test_game_session():
+    """
+    Tests a full game session with a bot client.
+    Starts a server, connects a client, plays one round, and verifies the flow.
+    """
     # Start Server
     server = Server()
     server_thread = threading.Thread(target=server.start, daemon=True)

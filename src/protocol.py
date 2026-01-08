@@ -32,7 +32,16 @@ SIZE_PAYLOAD_SERVER = struct.calcsize(FMT_PAYLOAD_SERVER)
 
 
 def _pad_string(text: str, length: int) -> bytes:
-    """Encodes string to bytes, truncates or pads with null bytes."""
+    """
+    Encodes string to bytes, truncates or pads with null bytes.
+
+    Args:
+        text (str): The string to encode.
+        length (int): The target length of the byte string.
+
+    Returns:
+        bytes: The encoded and padded/truncated byte string.
+    """
     encoded = text.encode('utf-8')
     if len(encoded) > length:
         return encoded[:length]
@@ -40,12 +49,29 @@ def _pad_string(text: str, length: int) -> bytes:
 
 
 def _decode_string(data: bytes) -> str:
-    """Decodes bytes to string, stripping null padding."""
+    """
+    Decodes bytes to string, stripping null padding.
+
+    Args:
+        data (bytes): The byte string to decode.
+
+    Returns:
+        str: The decoded string.
+    """
     return data.decode('utf-8').rstrip('\x00')
 
 
 def pack_offer(server_port: int, server_name: str) -> bytes:
-    """Packs an Offer message."""
+    """
+    Packs an Offer message.
+
+    Args:
+        server_port (int): The TCP port the server is listening on.
+        server_name (str): The name of the server.
+
+    Returns:
+        bytes: The packed binary message.
+    """
     name_bytes = _pad_string(server_name, 32)
     return struct.pack(FMT_OFFER, MAGIC_COOKIE, MSG_TYPE_OFFER, server_port, name_bytes)
 
@@ -53,7 +79,12 @@ def pack_offer(server_port: int, server_name: str) -> bytes:
 def unpack_offer(data: bytes) -> Optional[Tuple[int, str]]:
     """
     Unpacks an Offer message.
-    Returns (server_port, server_name) or None if invalid.
+
+    Args:
+        data (bytes): The binary data to unpack.
+
+    Returns:
+        Optional[Tuple[int, str]]: A tuple containing (server_port, server_name), or None if invalid.
     """
     try:
         if len(data) != struct.calcsize(FMT_OFFER):
@@ -70,7 +101,16 @@ def unpack_offer(data: bytes) -> Optional[Tuple[int, str]]:
 
 
 def pack_request(num_rounds: int, team_name: str) -> bytes:
-    """Packs a Request message."""
+    """
+    Packs a Request message.
+
+    Args:
+        num_rounds (int): The number of rounds requested.
+        team_name (str): The name of the client team.
+
+    Returns:
+        bytes: The packed binary message.
+    """
     name_bytes = _pad_string(team_name, 32)
     return struct.pack(FMT_REQUEST, MAGIC_COOKIE, MSG_TYPE_REQUEST, num_rounds, name_bytes)
 
@@ -78,7 +118,12 @@ def pack_request(num_rounds: int, team_name: str) -> bytes:
 def unpack_request(data: bytes) -> Optional[Tuple[int, str]]:
     """
     Unpacks a Request message.
-    Returns (num_rounds, team_name) or None if invalid.
+
+    Args:
+        data (bytes): The binary data to unpack.
+
+    Returns:
+        Optional[Tuple[int, str]]: A tuple containing (num_rounds, team_name), or None if invalid.
     """
     try:
         if len(data) != struct.calcsize(FMT_REQUEST):
@@ -95,7 +140,15 @@ def unpack_request(data: bytes) -> Optional[Tuple[int, str]]:
 
 
 def pack_payload_client(decision: str) -> bytes:
-    """Packs a Client Payload message (Decision)."""
+    """
+    Packs a Client Payload message (Decision).
+
+    Args:
+        decision (str): The player's decision ("Hittt" or "Stand").
+
+    Returns:
+        bytes: The packed binary message.
+    """
     # Decision should be "Hittt" or "Stand"
     decision_bytes = _pad_string(decision, 5) # "Hittt" is 5 chars, "Stand" is 5 chars
     return struct.pack(FMT_PAYLOAD_CLIENT, MAGIC_COOKIE, MSG_TYPE_PAYLOAD, decision_bytes)
@@ -104,7 +157,12 @@ def pack_payload_client(decision: str) -> bytes:
 def unpack_payload_client(data: bytes) -> Optional[str]:
     """
     Unpacks a Client Payload message.
-    Returns decision string or None if invalid.
+
+    Args:
+        data (bytes): The binary data to unpack.
+
+    Returns:
+        Optional[str]: The decision string, or None if invalid.
     """
     try:
         if len(data) != struct.calcsize(FMT_PAYLOAD_CLIENT):
@@ -121,14 +179,29 @@ def unpack_payload_client(data: bytes) -> Optional[str]:
 
 
 def pack_payload_server(result: int, rank: int, suit: int) -> bytes:
-    """Packs a Server Payload message (Card + Result)."""
+    """
+    Packs a Server Payload message (Card + Result).
+
+    Args:
+        result (int): The game result code (0=Continue, 1=Tie, 2=Loss, 3=Win).
+        rank (int): The card rank (1-13).
+        suit (int): The card suit (0-3).
+
+    Returns:
+        bytes: The packed binary message.
+    """
     return struct.pack(FMT_PAYLOAD_SERVER, MAGIC_COOKIE, MSG_TYPE_PAYLOAD, result, rank, suit)
 
 
 def unpack_payload_server(data: bytes) -> Optional[Tuple[int, int, int]]:
     """
     Unpacks a Server Payload message.
-    Returns (result, rank, suit) or None if invalid.
+
+    Args:
+        data (bytes): The binary data to unpack.
+
+    Returns:
+        Optional[Tuple[int, int, int]]: A tuple containing (result, rank, suit), or None if invalid.
     """
     try:
         if len(data) != struct.calcsize(FMT_PAYLOAD_SERVER):
@@ -147,7 +220,16 @@ def unpack_payload_server(data: bytes) -> Optional[Tuple[int, int, int]]:
 def recv_exact(sock, size: int) -> bytes:
     """
     Helper to receive exactly 'size' bytes from a socket.
-    Raises Exception if connection is closed before receiving all bytes.
+
+    Args:
+        sock (socket.socket): The socket to receive from.
+        size (int): The number of bytes to receive.
+
+    Returns:
+        bytes: The received data.
+
+    Raises:
+        Exception: If connection is closed before receiving all bytes.
     """
     buf = b''
     while len(buf) < size:
@@ -156,4 +238,3 @@ def recv_exact(sock, size: int) -> bytes:
             raise Exception("Connection closed")
         buf += data
     return buf
-

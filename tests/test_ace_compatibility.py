@@ -19,12 +19,25 @@ from src.client import Client
 class DumbHand:
     """A Hand that treats Ace as 11 always."""
     def __init__(self):
+        """Initializes an empty DumbHand."""
         self.cards = []
 
     def add_card(self, card):
+        """
+        Adds a card to the hand.
+
+        Args:
+            card (Card): The card to add.
+        """
         self.cards.append(card)
 
     def calculate_value(self):
+        """
+        Calculates the total value of the hand, treating Ace as 11 always.
+
+        Returns:
+            int: The total value of the hand.
+        """
         val = 0
         for card in self.cards:
             if card.rank == 1: # Ace
@@ -40,10 +53,25 @@ class DumbHand:
 
 class DumbClient(Client):
     def __init__(self, name, rounds):
+        """
+        Initializes the DumbClient.
+
+        Args:
+            name (str): The player name.
+            rounds (int): The number of rounds to play.
+        """
         super().__init__(player_name=name, auto_rounds=rounds)
     
     def play_round(self, tcp_socket):
-        """Same as Client.play_round but uses DumbHand."""
+        """
+        Same as Client.play_round but uses DumbHand.
+
+        Args:
+            tcp_socket (socket.socket): The TCP socket connected to the server.
+
+        Returns:
+            int: The result of the round.
+        """
         cards_received = 0
         my_turn = True
         player_hand = DumbHand() # <--- The Change
@@ -89,7 +117,12 @@ class DumbClient(Client):
 
 class DumbServer(Server):
     def play_round(self, client_socket):
-        """Same as Server.play_round but uses DumbHand."""
+        """
+        Same as Server.play_round but uses DumbHand.
+
+        Args:
+            client_socket (socket.socket): The client's TCP socket.
+        """
         deck = Deck()
         player_hand = DumbHand() # <--- The Change
         dealer_hand = DumbHand() # <--- The Change
@@ -141,6 +174,10 @@ class DumbServer(Server):
 # --- Test Runner ---
 
 def test_smart_server_dumb_client():
+    """
+    Tests compatibility between the standard (smart) server and a dumb client.
+    Verifies that the game runs without crashing even if client logic is different.
+    """
     print("\n>>> TEST 1: Smart Server (Yours) vs Dumb Client (Ace=11) <<<")
     server = Server()
     server_thread = threading.Thread(target=server.start, daemon=True)
@@ -152,6 +189,10 @@ def test_smart_server_dumb_client():
     print(">>> TEST 1 PASSED (Game finished without crash) <<<")
 
 def test_dumb_server_smart_client():
+    """
+    Tests compatibility between a dumb server and the standard (smart) client.
+    Verifies that the client can handle server logic that treats Ace differently.
+    """
     print("\n>>> TEST 2: Dumb Server (Ace=11) vs Smart Client (Yours) <<<")
     # We need to run this on a different port or restart logic, 
     # but for simplicity we'll just instantiate a new server object 

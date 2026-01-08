@@ -19,8 +19,11 @@ class Card:
         Initialize a card with rank and suit.
         
         Args:
-            rank (int): 1-13 (1=Ace, 11=Jack, 12=Queen, 13=King)
-            suit (int): 0-3 (Hearts, Diamonds, Clubs, Spades)
+            rank (int): 1-13 (1=Ace, 11=Jack, 12=Queen, 13=King).
+            suit (int): 0-3 (Hearts, Diamonds, Clubs, Spades).
+
+        Raises:
+            ValueError: If rank or suit are out of valid range.
         """
         if not (1 <= rank <= 13):
             raise ValueError(f"Invalid rank: {rank}")
@@ -33,9 +36,13 @@ class Card:
     def get_value(self) -> int:
         """
         Get the Blackjack value of the card.
+
         Ace returns 11 (logic to reduce to 1 is in Hand).
         Face cards return 10.
         Number cards return their rank.
+
+        Returns:
+            int: The Blackjack value of the card.
         """
         if self.rank == RANK_ACE:
             return 11
@@ -45,9 +52,24 @@ class Card:
             return self.rank
 
     def __repr__(self) -> str:
+        """
+        Returns a string representation of the card.
+
+        Returns:
+            str: The string representation (e.g., "Ace of Spades").
+        """
         return f"{RANK_MAP[self.rank]} of {SUIT_MAP[self.suit]}"
 
     def __eq__(self, other):
+        """
+        Checks equality with another card.
+
+        Args:
+            other (object): The object to compare with.
+
+        Returns:
+            bool: True if rank and suit match, False otherwise.
+        """
         if not isinstance(other, Card):
             return False
         return self.rank == other.rank and self.suit == other.suit
@@ -57,6 +79,7 @@ class Deck:
     """Represents a standard 52-card deck."""
     
     def __init__(self):
+        """Initializes the deck and resets it."""
         self.cards: List[Card] = []
         self.reset()
 
@@ -75,7 +98,9 @@ class Deck:
     def deal_card(self) -> Optional[Card]:
         """
         Removes and returns the top card from the deck.
-        Returns None if deck is empty.
+
+        Returns:
+            Optional[Card]: The dealt card, or None if the deck is empty.
         """
         if not self.cards:
             return None
@@ -86,16 +111,25 @@ class Hand:
     """Represents a player's or dealer's hand of cards."""
     
     def __init__(self):
+        """Initializes an empty hand."""
         self.cards: List[Card] = []
 
     def add_card(self, card: Card):
-        """Adds a card to the hand."""
+        """
+        Adds a card to the hand.
+
+        Args:
+            card (Card): The card to add.
+        """
         self.cards.append(card)
 
     def calculate_value(self) -> int:
         """
         Calculates the total value of the hand.
         Handles Ace logic (11 or 1) to avoid busting if possible.
+
+        Returns:
+            int: The total value of the hand.
         """
         value = 0
         ace_count = 0
@@ -114,4 +148,10 @@ class Hand:
         return value
 
     def __repr__(self) -> str:
+        """
+        Returns a string representation of the hand.
+
+        Returns:
+            str: The string representation including cards and total value.
+        """
         return f"Hand({', '.join(str(c) for c in self.cards)}) (Value: {self.calculate_value()})"

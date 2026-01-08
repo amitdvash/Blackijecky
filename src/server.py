@@ -57,19 +57,26 @@ def get_local_ip():
 
 class Server:
     def __init__(self):
+        """
+        Initializes the Server.
+        Sets up TCP and UDP sockets and retrieves the local IP address.
+        """
         self.running = True
         self.local_ip = get_local_ip()
 
         self.tcp_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.tcp_socket.bind((self.local_ip, 0))  # Bind to the specific interface
         self.tcp_port = self.tcp_socket.getsockname()[1]
-        
+
         self.udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.udp_socket.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
         self.udp_socket.bind((self.local_ip, 0)) # Bind to the specific interface to force broadcast source
 
     def start(self):
-        """Starts the server: UDP broadcast and TCP listener."""
+        """
+        Starts the server: UDP broadcast and TCP listener.
+        Runs the broadcast loop in a separate thread and listens for TCP connections in the main thread.
+        """
         print(f"{Colors.OKGREEN}Server started, listening on IP address {self.local_ip}{Colors.ENDC}")
         
         # Start UDP Broadcast Thread
@@ -80,7 +87,10 @@ class Server:
         self.listen_tcp()
 
     def broadcast_offers(self):
-        """Sends UDP Offer packets every second."""
+        """
+        Sends UDP Offer packets every second.
+        Runs in a loop until self.running is False.
+        """
         packet = pack_offer(self.tcp_port, SERVER_NAME)
         # print(f"Server started, listening on IP address {self.local_ip}") # Re-print as per example flow
         
@@ -93,7 +103,10 @@ class Server:
                 print(f"Error broadcasting: {e}")
 
     def listen_tcp(self):
-        """Listens for incoming TCP connections."""
+        """
+        Listens for incoming TCP connections.
+        Accepts connections and spawns a new thread for each client.
+        """
         self.tcp_socket.listen()
         print(f"{Colors.OKBLUE}Listening for TCP connections on port {self.tcp_port}...{Colors.ENDC}")
         
@@ -107,7 +120,14 @@ class Server:
                 print(f"{Colors.FAIL}Error accepting connection: {e}{Colors.ENDC}")
 
     def handle_client(self, client_socket: socket.socket, addr):
-        """Handles a single client connection."""
+        """
+        Handles a single client connection.
+        Receives the request, and manages the game loop for the requested number of rounds.
+
+        Args:
+            client_socket (socket.socket): The client's TCP socket.
+            addr (tuple): The client's address (IP, port).
+        """
         try:
             client_socket.settimeout(SOCKET_TIMEOUT) # Timeout per client
             
@@ -146,7 +166,13 @@ class Server:
             client_socket.close()
 
     def play_round(self, client_socket: socket.socket):
-        """Executes a single round of Blackjack."""
+        """
+        Executes a single round of Blackjack.
+        Deals cards, handles player turns, dealer turns, and determines the winner.
+
+        Args:
+            client_socket (socket.socket): The client's TCP socket.
+        """
         deck = Deck()
         player_hand = Hand()
         dealer_hand = Hand()
@@ -234,12 +260,25 @@ class Server:
         self.send_result(client_socket, result)
 
     def send_card(self, sock, card, result):
-        """Helper to send a card payload."""
+        """
+        Helper to send a card payload.
+
+        Args:
+            sock (socket.socket): The socket to send to.
+            card (Card): The card to send.
+            result (int): The current game result status.
+        """
         packet = pack_payload_server(result, card.rank, card.suit)
         sock.sendall(packet)
 
     def send_result(self, sock, result):
-        """Helper to send a result payload without a card."""
+        """
+        Helper to send a result payload without a card.
+
+        Args:
+            sock (socket.socket): The socket to send to.
+            result (int): The final game result.
+        """
         packet = pack_payload_server(result, 0, 0) # Rank 0, Suit 0
         sock.sendall(packet)
 

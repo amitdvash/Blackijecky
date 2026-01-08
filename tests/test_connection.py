@@ -7,6 +7,10 @@ from src.protocol import unpack_offer, pack_request
 from src.consts import CLIENT_UDP_PORT
 
 def test_server_connection():
+    """
+    Tests the basic connection flow between client and server.
+    Verifies UDP discovery and TCP connection establishment.
+    """
     # Start Server in a separate thread
     server = Server()
     server_thread = threading.Thread(target=server.start, daemon=True)

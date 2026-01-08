@@ -10,12 +10,23 @@ from src.server import Server
 from src.client import Client
 
 def run_server():
+    """
+    Starts the server in a separate thread.
+    Used for multi-client simulation.
+    """
     print("--- Starting Server Thread ---")
     server = Server()
     # We run it in a daemon thread so it dies when main script dies
     server.start()
 
 def run_client(name, rounds):
+    """
+    Starts a client in a separate thread.
+
+    Args:
+        name (str): The name of the client.
+        rounds (int): The number of rounds to play.
+    """
     print(f"--- Starting Client {name} Thread ---")
     # Give server a moment to start
     time.sleep(1)

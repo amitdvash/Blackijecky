@@ -35,6 +35,14 @@ TEAM_NAME = "404_Win_Not_Found_Client"
 
 class Client:
     def __init__(self, player_name=TEAM_NAME, auto_rounds=None):
+        """
+        Initializes the Client.
+        Sets up the UDP socket for listening to offers.
+
+        Args:
+            player_name (str, optional): The name of the player/team. Defaults to TEAM_NAME.
+            auto_rounds (int, optional): If set, automatically plays this many rounds without user input. Defaults to None.
+        """
         self.player_name = player_name
         self.auto_rounds = auto_rounds
         self.udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -49,7 +57,10 @@ class Client:
         print("Client started, listening for offer requests...")
 
     def start(self):
-        """Main client loop."""
+        """
+        Main client loop.
+        Gets user input for rounds, listens for offers, and connects to the server.
+        """
         # 1. Get user input (Once)
         if self.auto_rounds is not None:
             num_rounds = self.auto_rounds
@@ -84,7 +95,13 @@ class Client:
                 print(f"Error: {e}")
 
     def listen_for_offer(self):
-        """Waits for a valid UDP offer."""
+        """
+        Waits for a valid UDP offer.
+        Blocks until a valid offer is received.
+
+        Returns:
+            tuple: A tuple containing (server_ip, server_port).
+        """
         while True:
             data, addr = self.udp_socket.recvfrom(BUFFER_SIZE)
             result = unpack_offer(data)
@@ -98,7 +115,15 @@ class Client:
                 pass
 
     def connect_and_play(self, server_ip, server_port, num_rounds):
-        """Connects to server and handles the game session."""
+        """
+        Connects to server and handles the game session.
+        Manages the TCP connection and plays the specified number of rounds.
+
+        Args:
+            server_ip (str): The IP address of the server.
+            server_port (int): The TCP port of the server.
+            num_rounds (int): The number of rounds to play.
+        """
         tcp_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:
             tcp_socket.settimeout(SOCKET_TIMEOUT) # Timeout for network operations
@@ -148,7 +173,19 @@ class Client:
             print("Disconnected from server.")
 
     def play_round(self, tcp_socket):
-        """Handles a single round of the game."""
+        """
+        Handles a single round of the game.
+        Receives cards, makes decisions (Hit/Stand), and returns the result.
+
+        Args:
+            tcp_socket (socket.socket): The TCP socket connected to the server.
+
+        Returns:
+            int: The result of the round (RESULT_WIN, RESULT_LOSS, RESULT_TIE).
+
+        Raises:
+            Exception: If server disconnects or sends invalid data.
+        """
         cards_received = 0
         my_turn = True # Initially true, waiting for initial deal
         player_hand = Hand()
