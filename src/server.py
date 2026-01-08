@@ -35,20 +35,38 @@ from src.game_logic import Deck, Hand, Card
 
 SERVER_NAME = "404_Win_Not_Found_Server"
 
+def get_local_ip():
+    """
+    Retrieves the local IP address associated with the default gateway.
+    This helps in selecting the correct interface (e.g., Wi-Fi) instead of WSL or loopback.
+    """
+    try:
+        # Create a dummy socket to connect to an external address
+        # This forces the OS to choose the interface used for internet/LAN access
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(('8.8.8.8', 80))  # Google DNS, but port 80 or anything works
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except Exception:
+        # Fallback to standard method if internet is not available
+        try:
+             return socket.gethostbyname(socket.gethostname())
+        except:
+             return '127.0.0.1'
+
 class Server:
     def __init__(self):
+        self.running = True
+        self.local_ip = get_local_ip()
+
         self.tcp_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.tcp_socket.bind(('', 0))  # Bind to any available port
+        self.tcp_socket.bind((self.local_ip, 0))  # Bind to the specific interface
         self.tcp_port = self.tcp_socket.getsockname()[1]
+        
         self.udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.udp_socket.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-        self.running = True
-        
-        # Get local IP for display purposes (optional, but good for debugging)
-        try:
-            self.local_ip = socket.gethostbyname(socket.gethostname())
-        except:
-            self.local_ip = "127.0.0.1"
+        self.udp_socket.bind((self.local_ip, 0)) # Bind to the specific interface to force broadcast source
 
     def start(self):
         """Starts the server: UDP broadcast and TCP listener."""

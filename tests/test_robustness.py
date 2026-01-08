@@ -14,11 +14,13 @@ from src.consts import MAGIC_COOKIE, MSG_TYPE_REQUEST
 from src.protocol import pack_request, SIZE_REQUEST
 
 SERVER_PORT = 0 # Will be set after server starts
+SERVER_IP = '127.0.0.1' # Will be set after server starts
 
 def run_server():
-    global SERVER_PORT
+    global SERVER_PORT, SERVER_IP
     server = Server()
     SERVER_PORT = server.tcp_port
+    SERVER_IP = server.local_ip
     server.start()
 
 def run_bad_server():
@@ -88,7 +90,7 @@ def test_invalid_request():
     print("\n>>> TEST 1: Sending Invalid Request (Garbage Data) <<<")
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.connect(('127.0.0.1', SERVER_PORT))
+        sock.connect((SERVER_IP, SERVER_PORT))
         
         # Send garbage data (wrong size, wrong magic)
         garbage = b'\x00\x00\x00\x00' * 10
@@ -105,6 +107,9 @@ def test_invalid_request():
                 print("FAIL: Server sent data back (unexpected).")
         except socket.timeout:
             print("FAIL: Server kept connection open (timeout).")
+        except (ConnectionResetError, OSError) as e:
+            # On some systems (Windows), forceful close raises this
+             print("PASS: Server closed connection forcefull upon invalid request.")
             
         sock.close()
     except Exception as e:
@@ -114,7 +119,7 @@ def test_wrong_magic_cookie():
     print("\n>>> TEST 2: Sending Request with Wrong Magic Cookie <<<")
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.connect(('127.0.0.1', SERVER_PORT))
+        sock.connect((SERVER_IP, SERVER_PORT))
         
         # Pack a request but corrupt the magic cookie
         # Format: !IBB32s -> Magic, Type, Rounds, Name
@@ -141,7 +146,7 @@ def test_invalid_game_packet():
     print("\n>>> TEST 3: Sending Garbage during Game Loop <<<")
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.connect(('127.0.0.1', SERVER_PORT))
+        sock.connect((SERVER_IP, SERVER_PORT))
         
         # 1. Send Valid Request
         req = pack_request(1, "BadGamer")
@@ -165,6 +170,8 @@ def test_invalid_game_packet():
                     break
         except socket.timeout:
             print("FAIL: Server kept connection open after garbage game packet.")
+        except (ConnectionResetError, OSError) as e:
+             print("PASS: Server closed connection forcefully on invalid game packet.")
             
         sock.close()
     except Exception as e:
