@@ -61,38 +61,45 @@ class Client:
         Main client loop.
         Gets user input for rounds, listens for offers, and connects to the server.
         """
-        # 1. Get user input (Once)
-        if self.auto_rounds is not None:
-            num_rounds = self.auto_rounds
-            print(f"{Colors.OKBLUE}[{self.player_name}] Auto-selecting {num_rounds} rounds{Colors.ENDC}")
-        else:
-            while True:
-                try:
-                    num_rounds = int(input("How many rounds do you want to play? "))
-                    if num_rounds < 1 or num_rounds > 255:
-                        print("Please enter a number between 1 and 255.")
-                        continue
-                    break
-                except ValueError:
-                    print("Please enter a valid number.")
-
         while True:
-            try:
-                print(f"{Colors.OKGREEN}[{self.player_name}] Client started, listening for offer requests...{Colors.ENDC}")
-                
-                # 2. Listen for UDP Offer
-                server_ip, server_port = self.listen_for_offer()
-                if not server_ip:
-                    continue
-                
-                # 3. Connect via TCP
-                self.connect_and_play(server_ip, server_port, num_rounds)
-                
-            except KeyboardInterrupt:
-                print("\nClient stopping...")
-                break
-            except Exception as e:
-                print(f"Error: {e}")
+            # 1. Get user input (Repeatedly)
+            if self.auto_rounds is not None:
+                num_rounds = self.auto_rounds
+                print(f"{Colors.OKBLUE}[{self.player_name}] Auto-selecting {num_rounds} rounds{Colors.ENDC}")
+            else:
+                while True:
+                    try:
+                        user_in = input("How many rounds do you want to play? ")
+                        num_rounds = int(user_in)
+                        if num_rounds < 1 or num_rounds > 255:
+                            print("Please enter a number between 1 and 255.")
+                            continue
+                        break
+                    except ValueError:
+                        print("Please enter a valid number.")
+
+            # Inner Loop: Find server and play
+            rounds_completed = False
+            while not rounds_completed:
+                try:
+                    print(f"{Colors.OKGREEN}[{self.player_name}] Client started, listening for offer requests...{Colors.ENDC}")
+                    
+                    # 2. Listen for UDP Offer
+                    server_ip, server_port = self.listen_for_offer()
+                    if not server_ip:
+                        continue
+                    
+                    # 3. Connect via TCP
+                    rounds_completed = self.connect_and_play(server_ip, server_port, num_rounds)
+                    
+                    if not rounds_completed:
+                        print(f"{Colors.WARNING}Session failed or disconnected. Searching for new server to play {num_rounds} rounds...{Colors.ENDC}")
+
+                except KeyboardInterrupt:
+                    print("\nClient stopping...")
+                    return
+                except Exception as e:
+                    print(f"Error: {e}")
 
     def listen_for_offer(self):
         """
@@ -137,6 +144,7 @@ class Client:
             wins = 0
             losses = 0
             ties = 0
+            completed_all_rounds = True
             
             for i in range(1, num_rounds + 1):
                 print(f"\n{Colors.HEADER}{'='*20} Round {i} {'='*20}{Colors.ENDC}")
@@ -153,6 +161,7 @@ class Client:
                         print(f"\n{Colors.WARNING}{'-'*10} It's a Tie! {'-'*10}{Colors.ENDC}")
                 except Exception as e:
                     print(f"{Colors.FAIL}Error during round {i}: {e}{Colors.ENDC}")
+                    completed_all_rounds = False
                     break
             
             print(f"\n{Colors.HEADER}{'='*50}{Colors.ENDC}")
@@ -164,10 +173,14 @@ class Client:
                 print(f"  Win Rate: {wins/num_rounds:.2%}")
             print(f"{Colors.HEADER}{'='*50}{Colors.ENDC}\n")
             
+            return completed_all_rounds
+            
         except socket.timeout:
             print("Connection timed out.")
+            return False
         except Exception as e:
             print(f"Failed to connect to server: {e}")
+            return False
         finally:
             tcp_socket.close()
             print("Disconnected from server.")
