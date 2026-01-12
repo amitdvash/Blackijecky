@@ -252,9 +252,11 @@ class Client:
 
             # Check Result
             if result != 0:
+                # If we got a result (Win/Loss/Tie), the round is over. 
+                # Stop processing decisions.
                 return result
             
-            # Game Logic (Automated Heuristic)
+            # Game Logic (Automated Heuristic or Manual)
             # We decide if:
             # 1. We just got the 3rd card (Initial deal complete: P1, P2, D1)
             # 2. We just got a card and it's still our turn (Hit response)
@@ -263,6 +265,12 @@ class Client:
                 current_value = player_hand.calculate_value()
                 print(f"{Colors.OKBLUE}Current Hand Value: {current_value}{Colors.ENDC}")
                 
+                # FIX: If we busted, we should NOT ask for input, even if the server hasn't sent LOSS yet
+                # (The server SHOULD send LOSS immediately with the card, but let's be safe locally)
+                if current_value > 21:
+                    print(f"{Colors.FAIL}Busted! Waiting for server result...{Colors.ENDC}")
+                    continue
+
                 decision = None
                 
                 if self.manual_mode:
