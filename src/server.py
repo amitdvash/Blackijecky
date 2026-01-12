@@ -34,7 +34,7 @@ from src.protocol import (
 )
 from src.game_logic import Deck, Hand, Card
 
-SERVER_NAME = "404_Win_Not_Found_Server"
+SERVER_NAME = "404_Loss_Not_Found_Server"
 
 def get_local_ip():
     """

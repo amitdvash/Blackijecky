@@ -32,7 +32,7 @@ from src.protocol import (
 )
 from src.game_logic import Hand, Card
 
-TEAM_NAME = "404_Win_Not_Found_Client"
+TEAM_NAME = "404_Loss_Not_Found_Client"
 
 def format_hand_value(hand):
     """
@@ -117,6 +117,23 @@ class Client:
                         break
                     except ValueError:
                         print("Please enter a valid number.")
+                
+                # Bet amount per round (Client-side simulation)
+                self.bet_amount = 0
+                while True:
+                    try:
+                        bet_in = input("Enter bet amount per round ($): ").strip()
+                        if not bet_in: # Default to 10 if empty
+                            self.bet_amount = 10
+                        else:
+                            self.bet_amount = int(bet_in)
+                        
+                        if self.bet_amount < 0:
+                            print("Bet cannot be negative.")
+                            continue
+                        break
+                    except ValueError:
+                        print("Please enter a valid amount (integer).")
 
             # Inner Loop: Find server and play
             rounds_completed = False
@@ -184,6 +201,7 @@ class Client:
             wins = 0
             losses = 0
             ties = 0
+            total_earnings = 0
             completed_all_rounds = True
             
             for i in range(1, num_rounds + 1):
@@ -197,26 +215,67 @@ class Client:
                         
                     if result == RESULT_WIN:
                         wins += 1
-                        print(f"\n{Colors.OKGREEN}{'*'*10} You Won! {'*'*10}{Colors.ENDC}")
+                        total_earnings += self.bet_amount
+                        print(f"\n{Colors.OKGREEN}{'*'*10} You Won! (+${self.bet_amount}) {'*'*10}{Colors.ENDC}")
                     elif result == RESULT_LOSS:
                         losses += 1
-                        print(f"\n{Colors.FAIL}{'!'*10} You Lost! {'!'*10}{Colors.ENDC}")
+                        total_earnings -= self.bet_amount
+                        print(f"\n{Colors.FAIL}{'!'*10} You Lost! (-${self.bet_amount}) {'!'*10}{Colors.ENDC}")
                     elif result == RESULT_TIE:
                         ties += 1
-                        print(f"\n{Colors.WARNING}{'-'*10} It's a Tie! {'-'*10}{Colors.ENDC}")
+                        print(f"\n{Colors.WARNING}{'-'*10} It's a Tie! (No Change) {'-'*10}{Colors.ENDC}")
                 except Exception as e:
                     print(f"{Colors.FAIL}Error during round {i}: {e}{Colors.ENDC}")
                     completed_all_rounds = False
                     break
             
-            print(f"\n{Colors.HEADER}{'='*50}{Colors.ENDC}")
-            print(f"{Colors.BOLD}Game Statistics:{Colors.ENDC}")
-            print(f"  Wins:   {wins}")
+            # --- Game Statistics ---
+            
+            win_rate = (wins / num_rounds) * 100 if num_rounds > 0 else 0.0
+            wl_ratio = wins / losses if losses > 0 else wins # Handle divide by zero
+            
+            # Formatted earnings string
+            if total_earnings > 0:
+                earnings_str = f"{Colors.OKGREEN}+${total_earnings}{Colors.ENDC}"
+            elif total_earnings < 0:
+                earnings_str = f"{Colors.FAIL}-${abs(total_earnings)}{Colors.ENDC}"
+            else:
+                earnings_str = f"{Colors.WARNING}$0{Colors.ENDC}"
+
+            # --- Simple, clean statistics output without complex box drawing ---
+            print(f"\n{Colors.HEADER}==================== GAME STATISTICS ===================={Colors.ENDC}")
+            print(f"  Player: {self.player_name}")
+            print(f"  Rounds Played: {num_rounds}")
+            print(f"---------------------------------------------------------")
+            print(f"  Wins:   {wins:<5} ({win_rate:.1f}%)")
             print(f"  Losses: {losses}")
             print(f"  Ties:   {ties}")
+            print(f"---------------------------------------------------------")
+            print(f"  Win/Loss Ratio: {wl_ratio:.2f}")
+            print(f"  Net Earnings:   {earnings_str}")
+            print(f"{Colors.HEADER}========================================================={Colors.ENDC}")
+            
+            # Tacticial Feedback Message
             if num_rounds > 0:
-                print(f"  Win Rate: {wins/num_rounds:.2%}")
-            print(f"{Colors.HEADER}{'='*50}{Colors.ENDC}\n")
+                win_pct_decimal = wins / (wins + losses) if (wins + losses) > 0 else 0
+
+                if win_pct_decimal >= 0.5:
+                    msg_line1 = f"Cogratz {self.player_name} you have a good"
+                    msg_line2 = "BlackJack Tactic!"
+                    color = Colors.OKGREEN
+                else:
+                    msg_line1 = f"It seems like you should upgrade your gameplay"
+                    msg_line2 = f"{self.player_name}, cus you are losing money here!"
+                    color = Colors.FAIL
+                
+                print(f"{color}{msg_line1}{Colors.ENDC}")
+                print(f"{color}{msg_line2}{Colors.ENDC}")
+
+            print("") # Extra newline
+            
+            return completed_all_rounds
+            
+        except socket.timeout:
             
             return completed_all_rounds
             
@@ -275,22 +334,22 @@ class Client:
                 if cards_received < 2:
                     player_hand.add_card(card)
                     val_str = format_hand_value(player_hand)
-                    print(f"{Colors.OKCYAN}Player Card: {card_str} (total {val_str}){Colors.ENDC}")
+                    print(f"{Colors.OKCYAN}Player Card: {card_str} (Player Total: {val_str}){Colors.ENDC}")
                     
                 elif cards_received == 2:
                     dealer_hand.add_card(card)
                     val_str = format_hand_value(dealer_hand)
-                    print(f"{Colors.WARNING}Dealer Card: {card_str} (total {val_str}){Colors.ENDC}")
+                    print(f"{Colors.WARNING}Dealer Card: {card_str} (Dealer Total: {val_str}){Colors.ENDC}")
                 else:
                     # After initial deal
                     if my_turn:
                         player_hand.add_card(card)
                         val_str = format_hand_value(player_hand)
-                        print(f"{Colors.OKCYAN}Player Dealt: {card_str} (total {val_str}){Colors.ENDC}")
+                        print(f"{Colors.OKCYAN}Player Dealt: {card_str} (Player Total: {val_str}){Colors.ENDC}")
                     else:
                         dealer_hand.add_card(card)
                         val_str = format_hand_value(dealer_hand)
-                        print(f"{Colors.WARNING}Dealer Dealt: {card_str} (total {val_str}){Colors.ENDC}")
+                        print(f"{Colors.WARNING}Dealer Dealt: {card_str} (Dealer Total: {val_str}){Colors.ENDC}")
                 
                 cards_received += 1
 
