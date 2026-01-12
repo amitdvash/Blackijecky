@@ -28,12 +28,12 @@ class TestManualMode(unittest.TestCase):
             
             # Sequence of data for the client to receive:
             # 1. Card 1 (Player) - 10 Hearts
-            # 2. Card 2 (Player) - 10 Diamonds
+            # 2. Card 2 (Player) - 5 Diamonds (Value 15)
             # 3. Dealer Card 1 - 5 Clubs
             # --- Client sees 3 cards. It's their turn. Logic triggers. ---
             # --- Mock Input returns 'h' ---
             # --- Client sends HIT ---
-            # 4. Card 3 (Player) - 2 Hearts (Response to Hit)
+            # 4. Card 3 (Player) - 2 Hearts (Value 17 - Safe)
             # --- Client sees response. Still their turn. Logic triggers. ---
             # --- Mock Input returns 's' ---
             # --- Client sends STAND ---
@@ -41,7 +41,7 @@ class TestManualMode(unittest.TestCase):
             
             data_sequence = [
                 p(0, 10, 0), 
-                p(0, 10, 1), 
+                p(0, 5, 1), 
                 p(0, 5, 2),  
                 p(0, 2, 0),  
                 p(RESULT_WIN, 0, 0)
@@ -92,7 +92,7 @@ class TestManualMode(unittest.TestCase):
             # Same sequence as above
             data_sequence = [
                 pack_payload_server(0, 10, 0), 
-                pack_payload_server(0, 10, 1), 
+                pack_payload_server(0, 5, 1), 
                 pack_payload_server(0, 5, 2),  
                 pack_payload_server(0, 2, 0),  
                 pack_payload_server(RESULT_WIN, 0, 0)
