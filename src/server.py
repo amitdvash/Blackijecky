@@ -20,7 +20,8 @@ from src.consts import (
     PAYLOAD_DECISION_HIT,
     PAYLOAD_DECISION_STAND,
     Colors,
-    SOCKET_TIMEOUT
+    SOCKET_TIMEOUT,
+    SOCKET_TIMEOUT_DECISION
 )
 from src.protocol import (
     pack_offer, 
@@ -159,9 +160,9 @@ class Server:
             print(f"{Colors.OKBLUE}Finished all rounds for {team_name}. Closing connection.\n{Colors.ENDC}")
 
         except socket.timeout:
-            print(f"Client {addr} timed out.")
+            print(f"{Colors.FAIL}Client {addr} timed out (inactive).{Colors.ENDC}")
         except Exception as e:
-            print(f"Error handling client {addr}: {e}")
+            print(f"{Colors.FAIL}Error handling client {addr}: {e}{Colors.ENDC}")
         finally:
             client_socket.close()
 
@@ -197,14 +198,21 @@ class Server:
         hidden_card = deck.deal_card()
         dealer_hand.add_card(hidden_card)
         
-        # --- Player Turn ---
+        # Player Turn
         player_busted = False
         while True:
-            # Wait for decision
+            # Wait for decision with extended timeout for manual players
+            client_socket.settimeout(SOCKET_TIMEOUT_DECISION)
             try:
                 data = recv_exact(client_socket, SIZE_PAYLOAD_CLIENT)
+            except socket.timeout:
+                print(f"{Colors.FAIL}Timeout waiting for player decision.{Colors.ENDC}")
+                raise Exception("Player timed out while thinking.")
             except Exception:
                 raise Exception("Client disconnected during game")
+            
+            # Reset to normal timeout after receiving decision
+            client_socket.settimeout(SOCKET_TIMEOUT)
                 
             decision = unpack_payload_client(data)
             

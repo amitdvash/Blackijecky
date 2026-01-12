@@ -8,7 +8,8 @@ CLIENT_UDP_PORT = 13122
 BROADCAST_IP = '<broadcast>'
 OFFER_INTERVAL = 1.0  # Seconds
 BUFFER_SIZE = 1024
-SOCKET_TIMEOUT = 40.0 # Seconds
+SOCKET_TIMEOUT = 10.0 # Short timeout for connection/protocol
+SOCKET_TIMEOUT_DECISION = 60.0 # Long timeout for human decisions
 
 # Message Types
 MSG_TYPE_OFFER = 0x2
