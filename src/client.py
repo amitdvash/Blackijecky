@@ -6,6 +6,7 @@ Handles UDP listening and TCP connection to server.
 import socket
 import struct
 import sys
+import time
 from src.consts import (
     CLIENT_UDP_PORT,
     MAGIC_COOKIE,
@@ -32,6 +33,32 @@ from src.protocol import (
 from src.game_logic import Hand, Card
 
 TEAM_NAME = "404_Win_Not_Found_Client"
+
+def format_hand_value(hand):
+    """
+    Returns a formatted string for hand value.
+    Examples: "14", "7/17" (for soft hands).
+    """
+    val = hand.calculate_value()
+    
+    # Calculate "hard" value (Ace = 1)
+    hard_value = 0
+    has_ace = False
+    for card in hand.cards:
+        if card.rank == 1:
+            hard_value += 1
+            has_ace = True
+        elif card.rank >= 10:
+            hard_value += 10
+        else:
+            hard_value += card.rank
+            
+    # If we have an Ace, and the soft value (hard + 10) matches the calculated optimal value,
+    # and they are different (i.e. we haven't busted the soft value), show both.
+    if has_ace and hard_value + 10 == val and val != hard_value:
+        return f"{hard_value}/{val}"
+    
+    return f"{val}"
 
 class Client:
     def __init__(self, player_name=TEAM_NAME, auto_rounds=None):
@@ -163,6 +190,11 @@ class Client:
                 print(f"\n{Colors.HEADER}{'='*20} Round {i} {'='*20}{Colors.ENDC}")
                 try:
                     result = self.play_round(tcp_socket)
+                    
+                    # Add delay before showing result, especially for loss, as requested
+                    if self.manual_mode:
+                        time.sleep(1.0)
+                        
                     if result == RESULT_WIN:
                         wins += 1
                         print(f"\n{Colors.OKGREEN}{'*'*10} You Won! {'*'*10}{Colors.ENDC}")
@@ -215,6 +247,7 @@ class Client:
         cards_received = 0
         my_turn = True # Initially true, waiting for initial deal
         player_hand = Hand()
+        dealer_hand = Hand() # Track dealer cards for display
         
         while True:
             # Read exactly one packet size
@@ -235,18 +268,29 @@ class Client:
                 card = Card(rank, suit)
                 card_str = str(card)
                 
+                # Add a small human-friendly delay before printing
+                if self.manual_mode:
+                    time.sleep(0.5)
+
                 if cards_received < 2:
-                    print(f"{Colors.OKCYAN}Player Card: {card_str}{Colors.ENDC}")
                     player_hand.add_card(card)
+                    val_str = format_hand_value(player_hand)
+                    print(f"{Colors.OKCYAN}Player Card: {card_str} (total {val_str}){Colors.ENDC}")
+                    
                 elif cards_received == 2:
-                    print(f"{Colors.WARNING}Dealer Card: {card_str}{Colors.ENDC}")
+                    dealer_hand.add_card(card)
+                    val_str = format_hand_value(dealer_hand)
+                    print(f"{Colors.WARNING}Dealer Card: {card_str} (total {val_str}){Colors.ENDC}")
                 else:
                     # After initial deal
                     if my_turn:
-                        print(f"{Colors.OKCYAN}Player Dealt: {card_str}{Colors.ENDC}")
                         player_hand.add_card(card)
+                        val_str = format_hand_value(player_hand)
+                        print(f"{Colors.OKCYAN}Player Dealt: {card_str} (total {val_str}){Colors.ENDC}")
                     else:
-                        print(f"{Colors.WARNING}Dealer Dealt: {card_str}{Colors.ENDC}")
+                        dealer_hand.add_card(card)
+                        val_str = format_hand_value(dealer_hand)
+                        print(f"{Colors.WARNING}Dealer Dealt: {card_str} (total {val_str}){Colors.ENDC}")
                 
                 cards_received += 1
 
@@ -263,7 +307,7 @@ class Client:
             
             if cards_received >= 3 and my_turn:
                 current_value = player_hand.calculate_value()
-                print(f"{Colors.OKBLUE}Current Hand Value: {current_value}{Colors.ENDC}")
+                # print(f"{Colors.OKBLUE}Current Hand Value: {current_value}{Colors.ENDC}") # Removed redundant line
                 
                 # FIX: If we busted, we should NOT ask for input, even if the server hasn't sent LOSS yet
                 # (The server SHOULD send LOSS immediately with the card, but let's be safe locally)
@@ -275,6 +319,8 @@ class Client:
                 
                 if self.manual_mode:
                     print(f"{Colors.WARNING}Your turn!{Colors.ENDC}")
+                    # Extra newline for readability
+                    print("")
                     while decision not in [PAYLOAD_DECISION_HIT, PAYLOAD_DECISION_STAND]:
                         try:
                             # Use input but handle potential interrupts
@@ -289,6 +335,8 @@ class Client:
                             # Handle case where input stream closes unexpectedly
                             decision = PAYLOAD_DECISION_STAND
                 else:
+                    # In automated mode, add a delay to simulate "thinking" and make log readable
+                    time.sleep(1.0) 
                     if current_value < 17:
                         decision = PAYLOAD_DECISION_HIT
                     else:
