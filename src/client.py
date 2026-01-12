@@ -45,6 +45,7 @@ class Client:
         """
         self.player_name = player_name
         self.auto_rounds = auto_rounds
+        self.manual_mode = False  # Default to False
         self.udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         # Enable address reuse to allow multiple clients on same machine
         try:
@@ -67,6 +68,18 @@ class Client:
                 num_rounds = self.auto_rounds
                 print(f"{Colors.OKBLUE}[{self.player_name}] Auto-selecting {num_rounds} rounds{Colors.ENDC}")
             else:
+                while True:
+                    try:
+                        mode_in = input("Do you want to play manually? (y/n) ").strip().lower()
+                        if mode_in in ['y', 'yes', 'true']:
+                            self.manual_mode = True
+                            break
+                        elif mode_in in ['n', 'no', 'false']:
+                            self.manual_mode = False
+                            break
+                    except Exception:
+                        pass
+                        
                 while True:
                     try:
                         user_in = input("How many rounds do you want to play? ")
@@ -250,7 +263,30 @@ class Client:
                 current_value = player_hand.calculate_value()
                 print(f"{Colors.OKBLUE}Current Hand Value: {current_value}{Colors.ENDC}")
                 
-                if current_value < 17:
+                decision = None
+                
+                if self.manual_mode:
+                    print(f"{Colors.WARNING}Your turn!{Colors.ENDC}")
+                    while decision not in [PAYLOAD_DECISION_HIT, PAYLOAD_DECISION_STAND]:
+                        try:
+                            # Use input but handle potential interrupts
+                            user_input = input("Choose action (h)it or (s)tand: ").lower().strip()
+                            if user_input in ['h', 'hit']:
+                                decision = PAYLOAD_DECISION_HIT
+                            elif user_input in ['s', 'stand']:
+                                decision = PAYLOAD_DECISION_STAND
+                            else:
+                                print("Invalid input. Please enter 'h' or 's'.")
+                        except EOFError:
+                            # Handle case where input stream closes unexpectedly
+                            decision = PAYLOAD_DECISION_STAND
+                else:
+                    if current_value < 17:
+                        decision = PAYLOAD_DECISION_HIT
+                    else:
+                        decision = PAYLOAD_DECISION_STAND
+
+                if decision == PAYLOAD_DECISION_HIT:
                     print(f"{Colors.BOLD}-> Client decides to HIT{Colors.ENDC}")
                     tcp_socket.sendall(pack_payload_client(PAYLOAD_DECISION_HIT))
                 else:
