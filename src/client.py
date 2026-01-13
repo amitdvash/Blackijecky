@@ -1,6 +1,41 @@
 """
-Client application for Blackijecky.
-Handles UDP listening and TCP connection to server.
+src/client.py
+
+Overview
+--------
+The player client for Blackijecky.
+
+This module is responsible for:
+- Discovery: Listening for UDP Offer broadcasts from the Server.
+- Connection: Establishing a TCP connection to the advertised Server port.
+- Gameplay: Playing N rounds of Blackjack by sending HIT/STAND decisions.
+- User Interface: Printing the game flow and session statistics to the console.
+
+How it fits in the system
+-------------------------
+- Acts as the "Player" side of the distributed system.
+- Discovers the server using UDP Offers:
+  - Server broadcasts Offer packets on CLIENT_UDP_PORT.
+  - Client listens, validates the Offer using `unpack_offer`, then extracts (server_ip, tcp_port).
+- Plays over TCP after discovery:
+  - Sends a Request message (round count + team name) using `pack_request`.
+  - Receives Server Payload frames (result, rank, suit) using `unpack_payload_server`.
+  - Sends Client Payload frames ("Hittt"/"Stand") using `pack_payload_client`.
+
+How to run:
+-----------
+python -m src.client
+(or)
+python src/client.py
+
+Notes:
+------
+- Not deterministic: results depend on random dealing on the server.
+- Networking: This client expects a server broadcasting on the local network.
+- Manual vs Auto mode:
+  - Manual mode prompts for HIT/STAND each turn.
+  - Auto mode uses a simple strategy: HIT while value < 17, else STAND.
+- Robustness: Handles timeouts and disconnects and retries discovery if a session fails.
 """
 
 import socket
@@ -20,27 +55,47 @@ from src.consts import (
     PAYLOAD_DECISION_STAND,
     Colors,
     BUFFER_SIZE,
-    SOCKET_TIMEOUT
+    SOCKET_TIMEOUT,
 )
 from src.protocol import (
-    unpack_offer, 
-    pack_request, 
-    unpack_payload_server, 
+    unpack_offer,
+    pack_request,
+    unpack_payload_server,
     pack_payload_client,
     SIZE_PAYLOAD_SERVER,
-    recv_exact
+    recv_exact,
 )
 from src.game_logic import Hand, Card
 
 TEAM_NAME = "404_Loss_Not_Found_Client"
 
+
 def format_hand_value(hand):
     """
-    Returns a formatted string for hand value.
-    Examples: "14", "7/17" (for soft hands).
+    Formats the displayed hand value, including soft/hard Ace representation.
+
+    Purpose
+    -------
+    This function is *UI-facing*: it does not change game logic, only how values are
+    shown to the user in the console output.
+
+    What it does
+    ------------
+    - Uses `Hand.calculate_value()` for the best Blackjack value (Ace can be 1 or 11).
+    - Also computes a "hard" value (treating Aces as 1 always).
+    - If an Ace can be counted as 11 without busting (soft hand), prints "hard/soft":
+        Example: hard=7, soft=17 -> "7/17"
+    - Otherwise prints a single value:
+        Example: "14"
+
+    Args:
+        hand (Hand): The hand whose value should be displayed.
+
+    Returns:
+        str: Human-friendly string representation of the hand value.
     """
     val = hand.calculate_value()
-    
+
     # Calculate "hard" value (Ace = 1)
     hard_value = 0
     has_ace = False
@@ -52,23 +107,62 @@ def format_hand_value(hand):
             hard_value += 10
         else:
             hard_value += card.rank
-            
+
     # If we have an Ace, and the soft value (hard + 10) matches the calculated optimal value,
     # and they are different (i.e. we haven't busted the soft value), show both.
     if has_ace and hard_value + 10 == val and val != hard_value:
         return f"{hard_value}/{val}"
-    
+
     return f"{val}"
 
+
 class Client:
+    """
+    Blackjack client implementation.
+
+    Responsibilities
+    ----------------
+    - Bind a UDP socket and listen for server Offer broadcasts.
+    - Establish a TCP connection to the discovered server.
+    - Send a Request packet (round count + player name).
+    - Play rounds by:
+      - Receiving server payload frames (cards/results)
+      - Making HIT/STAND decisions (manual or auto strategy)
+      - Sending client payload frames back to the server
+    - Print game flow and statistics for the session.
+
+    Key attributes
+    --------------
+    - player_name (str): Team/player name sent in the Request packet.
+    - auto_rounds (int | None): If set, the client auto-plays that many rounds.
+    - manual_mode (bool): If True, prompts user for HIT/STAND.
+    - udp_socket (socket.socket): UDP listener bound to CLIENT_UDP_PORT.
+    - bet_amount (int): Client-side simulated bet (only used for displayed stats).
+
+    Notes
+    -----
+    - This client is designed to be run as a console application.
+    - It can run multiple instances on the same machine thanks to socket reuse options.
+    """
+
     def __init__(self, player_name=TEAM_NAME, auto_rounds=None):
         """
-        Initializes the Client.
-        Sets up the UDP socket for listening to offers.
+        Creates a Client instance and prepares UDP discovery.
+
+        Flow
+        ----
+        - Stores configuration:
+          - player_name
+          - auto_rounds (if provided)
+          - manual_mode default False
+        - Creates a UDP socket and binds it to CLIENT_UDP_PORT so it can receive Offers.
+        - Enables address reuse, allowing multiple clients on the same machine:
+          - Uses SO_REUSEPORT where available
+          - Falls back to SO_REUSEADDR (Windows compatibility)
 
         Args:
-            player_name (str, optional): The name of the player/team. Defaults to TEAM_NAME.
-            auto_rounds (int, optional): If set, automatically plays this many rounds without user input. Defaults to None.
+            player_name (str): Player/team name used in the Request packet.
+            auto_rounds (int | None): Number of rounds to auto-play without prompting.
         """
         self.player_name = player_name
         self.auto_rounds = auto_rounds
@@ -80,33 +174,67 @@ class Client:
         except AttributeError:
             # SO_REUSEPORT is not available on Windows, use SO_REUSEADDR
             self.udp_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            
-        self.udp_socket.bind(('', CLIENT_UDP_PORT))
+
+        self.udp_socket.bind(("", CLIENT_UDP_PORT))
         print("Client started, listening for offer requests...")
 
     def start(self):
         """
-        Main client loop.
-        Gets user input for rounds, listens for offers, and connects to the server.
+        Main client loop: choose settings, discover a server, play rounds, retry on failure.
+
+        High-level behavior
+        -------------------
+        This method is intentionally a loop so the client can:
+        - Recover from server disconnects.
+        - Re-discover a different server if the current one stops.
+        - Restart a session without restarting the client program.
+
+        Flow
+        ----
+        1) Decide game configuration:
+           - If auto_rounds is set: use it directly.
+           - Else:
+             - Ask whether to play manual mode (y/n).
+             - Ask number of rounds (1..255).
+             - Ask bet amount per round (client-side simulation for statistics).
+        2) Discovery + play loop:
+           - Listen for UDP Offer
+           - Connect via TCP
+           - Send Request
+           - Play N rounds using play_round()
+        3) If a session fails mid-way:
+           - Print a message
+           - Go back to discovery and try again
+
+        Notes
+        -----
+        - KeyboardInterrupt exits the client cleanly.
+        - Many "errors" are expected in networking (timeouts/disconnects); the client retries.
         """
         while True:
             # 1. Get user input (Repeatedly)
             if self.auto_rounds is not None:
                 num_rounds = self.auto_rounds
-                print(f"{Colors.OKBLUE}[{self.player_name}] Auto-selecting {num_rounds} rounds{Colors.ENDC}")
+                print(
+                    f"{Colors.OKBLUE}[{self.player_name}] Auto-selecting {num_rounds} rounds{Colors.ENDC}"
+                )
             else:
                 while True:
                     try:
-                        mode_in = input("Do you want to play manually? (y/n) ").strip().lower()
-                        if mode_in in ['y', 'yes', 'true']:
+                        mode_in = (
+                            input("Do you want to play manually? (y/n) ")
+                            .strip()
+                            .lower()
+                        )
+                        if mode_in in ["y", "yes", "true"]:
                             self.manual_mode = True
                             break
-                        elif mode_in in ['n', 'no', 'false']:
+                        elif mode_in in ["n", "no", "false"]:
                             self.manual_mode = False
                             break
                     except Exception:
                         pass
-                        
+
                 while True:
                     try:
                         user_in = input("How many rounds do you want to play? ")
@@ -117,17 +245,17 @@ class Client:
                         break
                     except ValueError:
                         print("Please enter a valid number.")
-                
+
                 # Bet amount per round (Client-side simulation)
                 self.bet_amount = 0
                 while True:
                     try:
                         bet_in = input("Enter bet amount per round ($): ").strip()
-                        if not bet_in: # Default to 10 if empty
+                        if not bet_in:  # Default to 10 if empty
                             self.bet_amount = 10
                         else:
                             self.bet_amount = int(bet_in)
-                        
+
                         if self.bet_amount < 0:
                             print("Bet cannot be negative.")
                             continue
@@ -139,18 +267,24 @@ class Client:
             rounds_completed = False
             while not rounds_completed:
                 try:
-                    print(f"{Colors.OKGREEN}[{self.player_name}] Client started, listening for offer requests...{Colors.ENDC}")
-                    
+                    print(
+                        f"{Colors.OKGREEN}[{self.player_name}] Client started, listening for offer requests...{Colors.ENDC}"
+                    )
+
                     # 2. Listen for UDP Offer
                     server_ip, server_port = self.listen_for_offer()
                     if not server_ip:
                         continue
-                    
+
                     # 3. Connect via TCP
-                    rounds_completed = self.connect_and_play(server_ip, server_port, num_rounds)
-                    
+                    rounds_completed = self.connect_and_play(
+                        server_ip, server_port, num_rounds
+                    )
+
                     if not rounds_completed:
-                        print(f"{Colors.WARNING}Session failed or disconnected. Searching for new server to play {num_rounds} rounds...{Colors.ENDC}")
+                        print(
+                            f"{Colors.WARNING}Session failed or disconnected. Searching for new server to play {num_rounds} rounds...{Colors.ENDC}"
+                        )
 
                 except KeyboardInterrupt:
                     print("\nClient stopping...")
@@ -160,16 +294,29 @@ class Client:
 
     def listen_for_offer(self):
         """
-        Waits for a valid UDP offer.
-        Blocks until a valid offer is received.
+        Blocks until a valid UDP Offer is received and returns the server address.
+
+        What it verifies
+        ---------------
+        - Reads a UDP datagram from udp_socket (listening on CLIENT_UDP_PORT).
+        - Validates and decodes it using `unpack_offer`.
+          - That function checks magic cookie and message type internally.
 
         Returns:
-            tuple: A tuple containing (server_ip, server_port).
+            tuple[str, int]:
+                (server_ip, server_port) for TCP connection.
+                server_ip is derived from the sender address (addr[0]).
+                server_port is taken from the Offer payload.
+
+        Notes
+        -----
+        - This function loops forever until a valid Offer arrives.
+        - Invalid packets are ignored (e.g., random UDP noise on the network).
         """
         while True:
             data, addr = self.udp_socket.recvfrom(BUFFER_SIZE)
             result = unpack_offer(data)
-            
+
             if result:
                 server_port, server_name = result
                 print(f"Received offer from {addr[0]}, attempting to connect...")
@@ -180,60 +327,82 @@ class Client:
 
     def connect_and_play(self, server_ip, server_port, num_rounds):
         """
-        Connects to server and handles the game session.
-        Manages the TCP connection and plays the specified number of rounds.
+        Establishes a TCP session and plays N rounds.
+
+        Flow
+        ----
+        1) Create TCP socket and connect to (server_ip, server_port).
+        2) Send a Request packet:
+           - Contains requested number of rounds and player/team name.
+        3) For each round:
+           - Call play_round(tcp_socket) which handles card receiving and decisions.
+           - Update stats (wins/losses/ties) and simulated earnings.
+        4) Print session statistics summary and a simple feedback message.
+        5) Close the socket and return whether the session completed cleanly.
 
         Args:
-            server_ip (str): The IP address of the server.
-            server_port (int): The TCP port of the server.
-            num_rounds (int): The number of rounds to play.
+            server_ip (str): Server IP to connect to (from UDP discovery).
+            server_port (int): TCP port advertised in the Offer.
+            num_rounds (int): Number of rounds requested in the Request message.
+
+        Returns:
+            bool:
+                True  -> all rounds completed successfully.
+                False -> disconnected/failed mid-session (caller may retry discovery).
+
         """
         tcp_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:
-            tcp_socket.settimeout(SOCKET_TIMEOUT) # Timeout for network operations
+            tcp_socket.settimeout(SOCKET_TIMEOUT)  # Timeout for network operations
             tcp_socket.connect((server_ip, server_port))
-            
+
             # 4. Send Request
             request_packet = pack_request(num_rounds, self.player_name)
             tcp_socket.sendall(request_packet)
             print(f"Connected to server. Requested {num_rounds} rounds.")
-            
+
             wins = 0
             losses = 0
             ties = 0
             total_earnings = 0
             completed_all_rounds = True
-            
+
             for i in range(1, num_rounds + 1):
                 print(f"\n{Colors.HEADER}{'='*20} Round {i} {'='*20}{Colors.ENDC}")
                 try:
                     result = self.play_round(tcp_socket)
-                    
+
                     # Add delay before showing result, especially for loss, as requested
                     if self.manual_mode:
                         time.sleep(1.0)
-                        
+
                     if result == RESULT_WIN:
                         wins += 1
                         total_earnings += self.bet_amount
-                        print(f"\n{Colors.OKGREEN}{'*'*10} You Won! (+${self.bet_amount}) {'*'*10}{Colors.ENDC}")
+                        print(
+                            f"\n{Colors.OKGREEN}{'*'*10} You Won! (+${self.bet_amount}) {'*'*10}{Colors.ENDC}"
+                        )
                     elif result == RESULT_LOSS:
                         losses += 1
                         total_earnings -= self.bet_amount
-                        print(f"\n{Colors.FAIL}{'!'*10} You Lost! (-${self.bet_amount}) {'!'*10}{Colors.ENDC}")
+                        print(
+                            f"\n{Colors.FAIL}{'!'*10} You Lost! (-${self.bet_amount}) {'!'*10}{Colors.ENDC}"
+                        )
                     elif result == RESULT_TIE:
                         ties += 1
-                        print(f"\n{Colors.WARNING}{'-'*10} It's a Tie! (No Change) {'-'*10}{Colors.ENDC}")
+                        print(
+                            f"\n{Colors.WARNING}{'-'*10} It's a Tie! (No Change) {'-'*10}{Colors.ENDC}"
+                        )
                 except Exception as e:
                     print(f"{Colors.FAIL}Error during round {i}: {e}{Colors.ENDC}")
                     completed_all_rounds = False
                     break
-            
+
             # --- Game Statistics ---
-            
+
             win_rate = (wins / num_rounds) * 100 if num_rounds > 0 else 0.0
-            wl_ratio = wins / losses if losses > 0 else wins # Handle divide by zero
-            
+            wl_ratio = wins / losses if losses > 0 else wins  # Handle divide by zero
+
             # Formatted earnings string
             if total_earnings > 0:
                 earnings_str = f"{Colors.OKGREEN}+${total_earnings}{Colors.ENDC}"
@@ -243,7 +412,9 @@ class Client:
                 earnings_str = f"{Colors.WARNING}$0{Colors.ENDC}"
 
             # --- Simple, clean statistics output without complex box drawing ---
-            print(f"\n{Colors.HEADER}==================== GAME STATISTICS ===================={Colors.ENDC}")
+            print(
+                f"\n{Colors.HEADER}==================== GAME STATISTICS ===================={Colors.ENDC}"
+            )
             print(f"  Player: {self.player_name}")
             print(f"  Rounds Played: {num_rounds}")
             print(f"---------------------------------------------------------")
@@ -253,8 +424,10 @@ class Client:
             print(f"---------------------------------------------------------")
             print(f"  Win/Loss Ratio: {wl_ratio:.2f}")
             print(f"  Net Earnings:   {earnings_str}")
-            print(f"{Colors.HEADER}========================================================={Colors.ENDC}")
-            
+            print(
+                f"{Colors.HEADER}========================================================={Colors.ENDC}"
+            )
+
             # Tacticial Feedback Message
             if num_rounds > 0:
                 win_pct_decimal = wins / (wins + losses) if (wins + losses) > 0 else 0
@@ -267,18 +440,18 @@ class Client:
                     msg_line1 = f"It seems like you should upgrade your gameplay"
                     msg_line2 = f"{self.player_name}, cus you are losing money here!"
                     color = Colors.FAIL
-                
+
                 print(f"{color}{msg_line1}{Colors.ENDC}")
                 print(f"{color}{msg_line2}{Colors.ENDC}")
 
-            print("") # Extra newline
-            
+            print("")  # Extra newline
+
             return completed_all_rounds
-            
+
         except socket.timeout:
-            
+
             return completed_all_rounds
-            
+
         except socket.timeout:
             print("Connection timed out.")
             return False
@@ -291,42 +464,70 @@ class Client:
 
     def play_round(self, tcp_socket):
         """
-        Handles a single round of the game.
-        Receives cards, makes decisions (Hit/Stand), and returns the result.
+        Plays one Blackjack round by receiving server payloads and sending decisions.
+
+        Protocol expectations
+        ---------------------
+        The client reads fixed-size server payload frames (SIZE_PAYLOAD_SERVER) in a loop.
+        Each server payload contains:
+        - result: RESULT_CONTINUE / RESULT_WIN / RESULT_LOSS / RESULT_TIE
+        - rank: card rank (1..13) or 0 if "no card" (final result packet)
+        - suit: suit id or 0 if "no card"
+
+        Flow
+        ----
+        1) Receive and display the initial deal:
+           - Player card #1
+           - Player card #2
+           - Dealer upcard #1
+        2) While it's the player's turn:
+           - Decide HIT/STAND (manual input or auto strategy)
+           - Send the decision to the server using pack_payload_client()
+           - Continue receiving cards/results
+        3) After STAND:
+           - Continue receiving dealer cards as the server plays dealer logic
+        4) When `result != 0` is received:
+           - Round ends immediately and result is returned.
+
+        Local state tracking
+        --------------------
+        - player_hand is maintained for decision-making and display.
+        - dealer_hand is maintained for display only (server is authoritative).
 
         Args:
-            tcp_socket (socket.socket): The TCP socket connected to the server.
+            tcp_socket (socket.socket): Active TCP socket connected to the server.
 
         Returns:
-            int: The result of the round (RESULT_WIN, RESULT_LOSS, RESULT_TIE).
+            int: RESULT_WIN / RESULT_LOSS / RESULT_TIE.
 
         Raises:
-            Exception: If server disconnects or sends invalid data.
+            Exception: If the server disconnects mid-round.
+
         """
         cards_received = 0
-        my_turn = True # Initially true, waiting for initial deal
+        my_turn = True  # Initially true, waiting for initial deal
         player_hand = Hand()
-        dealer_hand = Hand() # Track dealer cards for display
-        
+        dealer_hand = Hand()  # Track dealer cards for display
+
         while True:
             # Read exactly one packet size
             try:
                 data = recv_exact(tcp_socket, SIZE_PAYLOAD_SERVER)
             except Exception:
                 raise Exception("Server disconnected")
-                
+
             payload = unpack_payload_server(data)
             if not payload:
                 print("Invalid payload received")
                 continue
-                
+
             result, rank, suit = payload
-            
+
             # Display Card
             if rank != 0:
                 card = Card(rank, suit)
                 card_str = str(card)
-                
+
                 # Add a small human-friendly delay before printing
                 if self.manual_mode:
                     time.sleep(0.5)
@@ -334,59 +535,76 @@ class Client:
                 if cards_received < 2:
                     player_hand.add_card(card)
                     val_str = format_hand_value(player_hand)
-                    print(f"{Colors.OKCYAN}Player Card: {card_str} (Player Total: {val_str}){Colors.ENDC}")
-                    
+                    print(
+                        f"{Colors.OKCYAN}Player Card: {card_str} (Player Total: {val_str}){Colors.ENDC}"
+                    )
+
                 elif cards_received == 2:
                     dealer_hand.add_card(card)
                     val_str = format_hand_value(dealer_hand)
-                    print(f"{Colors.WARNING}Dealer Card: {card_str} (Dealer Total: {val_str}){Colors.ENDC}")
+                    print(
+                        f"{Colors.WARNING}Dealer Card: {card_str} (Dealer Total: {val_str}){Colors.ENDC}"
+                    )
                 else:
                     # After initial deal
                     if my_turn:
                         player_hand.add_card(card)
                         val_str = format_hand_value(player_hand)
-                        print(f"{Colors.OKCYAN}Player Dealt: {card_str} (Player Total: {val_str}){Colors.ENDC}")
+                        print(
+                            f"{Colors.OKCYAN}Player Dealt: {card_str} (Player Total: {val_str}){Colors.ENDC}"
+                        )
                     else:
                         dealer_hand.add_card(card)
                         val_str = format_hand_value(dealer_hand)
-                        print(f"{Colors.WARNING}Dealer Dealt: {card_str} (Dealer Total: {val_str}){Colors.ENDC}")
-                
+                        print(
+                            f"{Colors.WARNING}Dealer Dealt: {card_str} (Dealer Total: {val_str}){Colors.ENDC}"
+                        )
+
                 cards_received += 1
 
             # Check Result
             if result != 0:
-                # If we got a result (Win/Loss/Tie), the round is over. 
+                # If we got a result (Win/Loss/Tie), the round is over.
                 # Stop processing decisions.
                 return result
-            
+
             # Game Logic (Automated Heuristic or Manual)
             # We decide if:
             # 1. We just got the 3rd card (Initial deal complete: P1, P2, D1)
             # 2. We just got a card and it's still our turn (Hit response)
-            
+
             if cards_received >= 3 and my_turn:
                 current_value = player_hand.calculate_value()
                 # print(f"{Colors.OKBLUE}Current Hand Value: {current_value}{Colors.ENDC}") # Removed redundant line
-                
+
                 # FIX: If we busted, we should NOT ask for input, even if the server hasn't sent LOSS yet
                 # (The server SHOULD send LOSS immediately with the card, but let's be safe locally)
                 if current_value > 21:
-                    print(f"{Colors.FAIL}Busted! Waiting for server result...{Colors.ENDC}")
+                    print(
+                        f"{Colors.FAIL}Busted! Waiting for server result...{Colors.ENDC}"
+                    )
                     continue
 
                 decision = None
-                
+
                 if self.manual_mode:
                     print(f"{Colors.WARNING}Your turn!{Colors.ENDC}")
                     # Extra newline for readability
                     print("")
-                    while decision not in [PAYLOAD_DECISION_HIT, PAYLOAD_DECISION_STAND]:
+                    while decision not in [
+                        PAYLOAD_DECISION_HIT,
+                        PAYLOAD_DECISION_STAND,
+                    ]:
                         try:
                             # Use input but handle potential interrupts
-                            user_input = input("Choose action (h)it or (s)tand: ").lower().strip()
-                            if user_input in ['h', 'hit']:
+                            user_input = (
+                                input("Choose action (h)it or (s)tand: ")
+                                .lower()
+                                .strip()
+                            )
+                            if user_input in ["h", "hit"]:
                                 decision = PAYLOAD_DECISION_HIT
-                            elif user_input in ['s', 'stand']:
+                            elif user_input in ["s", "stand"]:
                                 decision = PAYLOAD_DECISION_STAND
                             else:
                                 print("Invalid input. Please enter 'h' or 's'.")
@@ -395,7 +613,7 @@ class Client:
                             decision = PAYLOAD_DECISION_STAND
                 else:
                     # In automated mode, add a delay to simulate "thinking" and make log readable
-                    time.sleep(1.0) 
+                    time.sleep(1.0)
                     if current_value < 17:
                         decision = PAYLOAD_DECISION_HIT
                     else:
@@ -408,6 +626,7 @@ class Client:
                     print(f"{Colors.BOLD}-> Client decides to STAND{Colors.ENDC}")
                     tcp_socket.sendall(pack_payload_client(PAYLOAD_DECISION_STAND))
                     my_turn = False
+
 
 if __name__ == "__main__":
     client = Client()
